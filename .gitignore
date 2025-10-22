@@ -1,0 +1,4 @@
+# .gitignore에 추가
+*:Zone.Identifier
+*.tmp
+*복사본*
