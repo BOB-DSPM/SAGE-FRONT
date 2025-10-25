@@ -4,7 +4,7 @@ const AUDIT_API_BASE = 'http://211.44.183.248:8103';
 export const complianceApi = {
   // 프레임워크 전체 감사 (배치)
   async auditAll(framework) {
-    const response = await fetch(`${AUDIT_API_BASE}/audit/${framework}/_all`, {
+    const response = await fetch(`${AUDIT_API_BASE}/audit/${framework}/_all?stream=false`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -69,7 +69,7 @@ export const complianceApi = {
 
   // 특정 요구사항 감사
   async auditRequirement(framework, requirementId) {
-    const response = await fetch(`${AUDIT_API_BASE}/audit/${framework}/${requirementId}`, {
+    const response = await fetch(`${AUDIT_API_BASE}/audit/audit/${framework}/${requirementId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });

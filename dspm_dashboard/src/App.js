@@ -12,15 +12,18 @@ import Policies2 from './pages/Policies2';
 import Lineage from './pages/Lineage';
 //import AwsSetup from './pages/AwsSetup';
 import AegisResults from './pages/AegisResults';
-import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3,ClipboardList,  FolderSearch       } from 'lucide-react';
+import ThreatCompliance from './pages/ThreatCompliance';
+import ThreatComplianceDetail from './pages/ThreatComplianceDetail';
+import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3, ClipboardList, FolderSearch, ShieldAlert } from 'lucide-react';
 
 const tabs = [
   { id: 'overview', name: 'Overview', icon: Activity },
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
-  { id: 'data-target', name: 'Data Collector', icon: FolderSearch            },
+  { id: 'data-target', name: 'Data Collector', icon: FolderSearch },
   { id: 'lineage', name: 'Lineage', icon: GitBranch },
-  { id: 'policies', name: 'Compliance Status', icon: BarChart3  },
-  { id: 'policies2', name: 'Policies', icon: ClipboardList  },
+  { id: 'policies', name: 'Compliance Status', icon: BarChart3 },
+  { id: 'policies2', name: 'Policies', icon: ClipboardList },
+  { id: 'threat-compliance', name: 'Threat Compliance', icon: ShieldAlert },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
 ];
 
@@ -33,6 +36,7 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
     lineage: 0,
     policies: 0,
     policies2: 0,
+    'threat-compliance': 0,
     //alerts: 0,
   });
 
@@ -69,6 +73,7 @@ const MainDashboard = ({ onLogout }) => {
     lineage: 0,
     policies: 0,
     policies2: 0,
+    'threat-compliance': 0,
     //alerts: 0,
   });
 
@@ -94,6 +99,8 @@ const MainDashboard = ({ onLogout }) => {
         return <Policies2 key={componentKeys.policies2} />;
       case 'lineage':
         return <Lineage key={componentKeys.lineage} />;
+      case 'threat-compliance':
+        return <ThreatCompliance key={componentKeys['threat-compliance']} />;
       //case 'aws-setup':
        // return <AwsSetup key={componentKeys['aws-setup']} />;
       default:
@@ -131,6 +138,17 @@ const App = () => {
               <Header onLogout={() => setIsLoggedIn(false)} />
               <div className="flex-1 px-6 py-8">
                 <AegisResults />
+              </div>
+            </div>
+          } 
+        />
+        <Route 
+          path="/threat-compliance/:reqId" 
+          element={
+            <div className="min-h-screen flex flex-col bg-gray-50">
+              <Header onLogout={() => setIsLoggedIn(false)} />
+              <div className="flex-1 px-6 py-8">
+                <ThreatComplianceDetail />
               </div>
             </div>
           } 
