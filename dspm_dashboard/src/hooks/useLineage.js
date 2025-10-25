@@ -10,6 +10,8 @@ export const useLineage = () => {
   const [pipelines, setPipelines] = useState([]);
   const [domains, setDomains] = useState([]);
   const [loadingPipelines, setLoadingPipelines] = useState(false);
+  const [domainLineageData, setDomainLineageData] = useState(null);
+  const [loadingDomainLineage, setLoadingDomainLineage] = useState(false);
 
   // Mock 세션 시작
   useEffect(() => {
@@ -26,15 +28,21 @@ export const useLineage = () => {
     initSession();
   }, []);
 
-  // 파이프라인 목록 조회 (기존 Catalog API 사용)
-  const loadPipelines = useCallback(async (regions = 'ap-northeast-2') => {
+  // 파이프라인 목록 조회 (새 API 사용)
+  const loadPipelines = useCallback(async (options = {}) => {
     setLoadingPipelines(true);
     setError(null);
 
     try {
-      const data = await lineageApi.getCatalog(regions);
+      const data = await lineageApi.getPipelines({
+        regions: options.regions || 'ap-northeast-2',
+        includeLatestExec: options.includeLatestExec || false,
+        name: options.name || null,
+        domainName: options.domainName || null,
+        domainId: options.domainId || null
+      });
       
-      console.log('Catalog data:', data);
+      console.log('Pipelines data:', data);
       
       // 파이프라인 목록 추출
       const pipelineList = [];
@@ -49,28 +57,40 @@ export const useLineage = () => {
                 lastModifiedTime: pipe.lastModifiedTime,
                 tags: pipe.tags || {},
                 matchedDomain: pipe.matchedDomain,
+                latestExecution: pipe.latestExecution,
               });
             });
           }
         });
       }
       
-      // 도메인 ID 추출
-      const domainIdSet = new Set();
+      // 도메인 정보 추출
+      const domainMap = new Map();
       pipelineList.forEach(pipe => {
-        if (pipe.tags && pipe.tags['sagemaker:domain-arn']) {
+        // matchedDomain 정보가 있는 경우 사용
+        if (pipe.matchedDomain) {
+          domainMap.set(pipe.matchedDomain.domainId, {
+            id: pipe.matchedDomain.domainId,
+            name: pipe.matchedDomain.domainName || pipe.matchedDomain.domainId,
+            region: pipe.region,
+          });
+        }
+        // 또는 tags에서 추출
+        else if (pipe.tags && pipe.tags['sagemaker:domain-arn']) {
           const match = pipe.tags['sagemaker:domain-arn'].match(/domain\/(d-[a-z0-9]+)/);
           if (match) {
-            domainIdSet.add(match[1]);
+            const domainId = match[1];
+            const domainName = pipe.tags['DomainName'] || domainId;
+            domainMap.set(domainId, {
+              id: domainId,
+              name: domainName,
+              region: pipe.region,
+            });
           }
         }
       });
       
-      const domainList = Array.from(domainIdSet).map(domainId => ({
-        id: domainId,
-        name: domainId,
-        region: regions,
-      }));
+      const domainList = Array.from(domainMap.values());
       
       setDomains(domainList);
       setPipelines(pipelineList);
@@ -87,17 +107,17 @@ export const useLineage = () => {
   }, []);
 
   // 특정 파이프라인의 lineage 조회
-  const loadLineage = useCallback(async (pipelineName, region = 'ap-northeast-2') => {
+  const loadLineage = useCallback(async (pipelineName, region = 'ap-northeast-2', domain = null) => {
     if (!pipelineName || !pipelineName.trim()) {
       setError('파이프라인 이름을 입력하세요');
-      return;
+      return null;
     }
 
     setLoading(true);
     setError(null);
 
     try {
-      const data = await lineageApi.getLineage(pipelineName, region, true);
+      const data = await lineageApi.getLineage(pipelineName, region, true, domain);
       setLineageData(data);
       return data;
     } catch (err) {
@@ -110,6 +130,30 @@ export const useLineage = () => {
     }
   }, []);
 
+  // 새로운 함수: 도메인으로 라인리지 조회
+  const loadLineageByDomain = useCallback(async (domain, region = 'ap-northeast-2') => {
+    if (!domain || !domain.trim()) {
+      setError('도메인 이름을 입력하세요');
+      return null;
+    }
+
+    setLoadingDomainLineage(true);
+    setError(null);
+
+    try {
+      const data = await lineageApi.getLineageByDomain(region, domain, true);
+      setDomainLineageData(data);
+      return data;
+    } catch (err) {
+      console.error('Failed to load domain lineage:', err);
+      setError(err.message);
+      setDomainLineageData(null);
+      return null;
+    } finally {
+      setLoadingDomainLineage(false);
+    }
+  }, []);
+
   return { 
     lineageData, 
     loading, 
@@ -118,6 +162,10 @@ export const useLineage = () => {
     pipelines,
     domains,
     loadingPipelines,
-    loadPipelines
+    loadPipelines,
+    // 새로운 도메인 기반 라인리지 관련 상태와 함수
+    domainLineageData,
+    loadingDomainLineage,
+    loadLineageByDomain
   };
 };

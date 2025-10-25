@@ -20,7 +20,10 @@ const Lineage = () => {
     pipelines = [],
     domains = [],
     loadingPipelines,
-    loadPipelines
+    loadPipelines,
+    domainLineageData,
+    loadingDomainLineage,
+    loadLineageByDomain
   } = useLineage();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -40,12 +43,15 @@ const Lineage = () => {
   const getDomainPipelineCount = (domainId) => {
     if (domainId === '__untagged__') {
       return pipelines.filter(p => {
-        const hasDomainTag = p.tags && p.tags['sagemaker:domain-arn'];
+        const hasDomainTag = p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
         return !hasDomainTag;
       }).length;
     }
     
     return pipelines.filter(p => {
+      if (p.matchedDomain) {
+        return p.matchedDomain.domainId === domainId;
+      }
       if (p.tags && p.tags['sagemaker:domain-arn']) {
         const domainArn = p.tags['sagemaker:domain-arn'];
         return domainArn.includes(domainId);
@@ -62,10 +68,13 @@ const Lineage = () => {
       ? pipelines
       : selectedDomain.id === '__untagged__'
         ? pipelines.filter(p => {
-            const hasDomainTag = p.tags && p.tags['sagemaker:domain-arn'];
+            const hasDomainTag = p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
             return !hasDomainTag;
           })
         : pipelines.filter(p => {
+            if (p.matchedDomain) {
+              return p.matchedDomain.domainId === selectedDomain.id;
+            }
             if (p.tags && p.tags['sagemaker:domain-arn']) {
               const domainArn = p.tags['sagemaker:domain-arn'];
               return domainArn.includes(selectedDomain.id);
@@ -358,6 +367,29 @@ const Lineage = () => {
   };
 
   // -------------------------
+  // 도메인 선택 시 처리
+  // -------------------------
+  const handleDomainSelect = async (domain) => {
+    setSelectedDomain(domain);
+    setShowDomainDropdown(false);
+    
+    // 전체 또는 미분류 도메인인 경우 기본 필터링만 적용
+    if (domain.id === '__all__' || domain.id === '__untagged__') {
+      return;
+    }
+    
+    try {
+      // 도메인이 있는 경우 해당 도메인의 모든 파이프라인 라인리지 로드
+      const data = await loadLineageByDomain(domain.name, domain.region);
+      console.log('Domain lineage data:', data);
+      
+      // 도메인 라인리지 데이터 활용은 향후 요구사항에 따라 구현
+    } catch (err) {
+      console.error('Failed to load domain lineage:', err);
+    }
+  };
+
+  // -------------------------
   // pipeline 선택 시 lineage 로드
   // -------------------------
   const handlePipelineSelect = async (pipeline) => {
@@ -365,7 +397,17 @@ const Lineage = () => {
     setShowPipelineList(false);
 
     try {
-      const data = await loadLineage(pipeline.name, pipeline.region);
+      // 파이프라인이 속한 도메인 정보 확인
+      let domainName = null;
+      if (pipeline.matchedDomain && pipeline.matchedDomain.domainName) {
+        domainName = pipeline.matchedDomain.domainName;
+      } else if (pipeline.tags && pipeline.tags['DomainName']) {
+        domainName = pipeline.tags['DomainName'];
+      }
+      
+      // 라인리지 로드 (도메인 정보 포함)
+      const data = await loadLineage(pipeline.name, pipeline.region, domainName);
+
       if (data?.graph) {
         const convertedNodes = convertToNodes(data.graph);
         const convertedEdges = convertToEdges(data.graph);
@@ -388,7 +430,11 @@ const Lineage = () => {
   // initial pipelines load
   // -------------------------
   useEffect(() => {
-    loadPipelines();
+    // 파이프라인 목록 로드 (새 API 사용)
+    loadPipelines({
+      regions: 'ap-northeast-2',
+      includeLatestExec: true
+    });
   }, [loadPipelines]);
 
   // -------------------------
@@ -564,7 +610,10 @@ const Lineage = () => {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">SageMaker Pipelines</h3>
           <button
-            onClick={() => loadPipelines()}
+            onClick={() => loadPipelines({
+              regions: 'ap-northeast-2',
+              includeLatestExec: true
+            })}
             disabled={loadingPipelines}
             className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2"
           >
@@ -600,8 +649,7 @@ const Lineage = () => {
                 <div className="border-b border-gray-200">
                   <button
                     onClick={() => {
-                      setSelectedDomain({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' });
-                      setShowDomainDropdown(false);
+                      handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' });
                     }}
                     className="w-full px-4 py-2 text-left hover:bg-gray-50"
                   >
@@ -618,12 +666,11 @@ const Lineage = () => {
                         <button
                           key={`domain-${index}`}
                           onClick={() => {
-                            setSelectedDomain(domain);
-                            setShowDomainDropdown(false);
+                            handleDomainSelect(domain);
                           }}
                           className="w-full px-4 py-2 text-left hover:bg-gray-50"
                         >
-                          <div className="font-medium text-sm text-gray-900">{domain.id}</div>
+                          <div className="font-medium text-sm text-gray-900">{domain.name || domain.id}</div>
                           <div className="text-xs text-gray-500">{count}개 파이프라인</div>
                         </button>
                       );
@@ -639,8 +686,7 @@ const Lineage = () => {
                       <div>
                         <button
                           onClick={() => {
-                            setSelectedDomain({ id: '__untagged__', name: '기타', region: 'ap-northeast-2' });
-                            setShowDomainDropdown(false);
+                            handleDomainSelect({ id: '__untagged__', name: '기타', region: 'ap-northeast-2' });
                           }}
                           className="w-full px-4 py-2 text-left hover:bg-gray-50"
                         >
@@ -954,12 +1000,12 @@ const Lineage = () => {
                               
                               {/* S3 Console Link */}
                               <div className="mt-2 pt-2 border-t border-green-200">
-                                <a>
+                                <a 
                                   href={`https://s3.console.aws.amazon.com/s3/buckets/${input.s3.bucket}?region=${input.s3.region}&prefix=${encodeURIComponent(input.uri.replace(`s3://${input.s3.bucket}/`, ''))}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs text-green-700 hover:text-green-900 hover:underline flex items-center gap-1"
-                                
+                                >
                                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                   </svg>
@@ -1057,12 +1103,12 @@ const Lineage = () => {
                               
                               {/* S3 Console Link */}
                               <div className="mt-2 pt-2 border-t border-purple-200">
-                                <a>
+                                <a 
                                   href={`https://s3.console.aws.amazon.com/s3/buckets/${output.s3.bucket}?region=${output.s3.region}&prefix=${encodeURIComponent(output.uri.replace(`s3://${output.s3.bucket}/`, ''))}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs text-purple-700 hover:text-purple-900 hover:underline flex items-center gap-1"
-                                
+                                >
                                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                   </svg>
@@ -1104,6 +1150,48 @@ const Lineage = () => {
             <p className="text-sm text-gray-600">Total Duration</p>
             <p className="text-2xl font-bold text-gray-900">{safeValue(formatDuration(lineageData.summary.elapsedSec))}</p>
           </div>
+        </div>
+      )}
+
+      {/* 도메인 라인리지 요약 (필요한 경우) */}
+      {domainLineageData && selectedDomain && selectedDomain.id !== '__all__' && selectedDomain.id !== '__untagged__' && !selectedPipeline && (
+        <div className="bg-white rounded-lg p-4 shadow-sm border mt-4">
+          <h3 className="text-lg font-semibold mb-4">도메인 파이프라인 요약</h3>
+          {loadingDomainLineage ? (
+            <div className="text-center py-4 text-gray-600">도메인 라인리지 정보를 불러오는 중...</div>
+          ) : (
+            <div className="space-y-4">
+              {domainLineageData.pipelines && domainLineageData.pipelines.length > 0 ? (
+                domainLineageData.pipelines.map((pipeline, index) => (
+                  <div key={index} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold">{pipeline.name}</div>
+                      {pipeline.status && getStatusIcon(pipeline.status)}
+                    </div>
+                    {pipeline.lastRun && (
+                      <div className="text-xs text-gray-600 mt-1">
+                        Last run: {formatDateSafe(pipeline.lastRun.startTime)} | 
+                        Duration: {formatDuration(pipeline.lastRun.elapsedSec)}
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => {
+                        const pipelineObj = pipelines.find(p => p.name === pipeline.name && p.region === selectedDomain.region);
+                        if (pipelineObj) {
+                          handlePipelineSelect(pipelineObj);
+                        }
+                      }}
+                      className="mt-2 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      라인리지 보기
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4 text-gray-600">이 도메인에 대한 파이프라인 정보가 없습니다</div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
