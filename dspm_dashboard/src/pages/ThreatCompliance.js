@@ -1,6 +1,6 @@
 // src/pages/ThreatCompliance.js
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { ClipboardList, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { sessionService } from '../services/sessionService';
 import { complianceApi } from '../services/complianceApi';
 
@@ -41,11 +41,7 @@ const ThreatCompliance = () => {
     try {
       const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
       const data = await response.json();
-      console.log("Fetched requirements:", data); // 👈 실제 응답 형태 확인
-
-      // ✅ 배열인지 체크 후 설정
-      setRequirements(Array.isArray(data) ? data : (data.results || []));
-      
+      setRequirements(data);
       setSelectedFramework(frameworkCode);
       setSidePanelOpen(false);
       setMappingDetail(null);
@@ -57,7 +53,6 @@ const ThreatCompliance = () => {
       setLoading(false);
     }
   };
-
 
   const fetchMappingDetail = async (frameworkCode, reqId) => {
     setLoading(true);
@@ -161,7 +156,7 @@ const ThreatCompliance = () => {
         </span>
       );
     }
-    if (status === 'SKIPPED' || status === 'Skipped'|| status === 'ERROR'|| status === 'Error') {
+    if (status === 'SKIPPED' || status === 'Skipped') {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
           건너뜀
@@ -217,7 +212,7 @@ const ThreatCompliance = () => {
       `}</style>
 
       <div className="flex items-center gap-3">
-        <ShieldAlert className="w-8 h-8 text-primary-500" />
+        <ClipboardList className="w-8 h-8 text-primary-500" />
         <h1 className="text-3xl font-bold text-gray-900">Threat Compliance</h1>
       </div>
 
@@ -273,6 +268,7 @@ const ThreatCompliance = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px', maxWidth: '400px' }}>항목 코드</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">세부 사항</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">준수 여부</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">컴플라이언스</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">액션</th>
                 </tr>
               </thead>
@@ -317,6 +313,17 @@ const ThreatCompliance = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">{getMappingStatusBadge(req.mapping_status)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        <div
+                          className="line-clamp-2 cursor-pointer hover:text-blue-600"
+                          onClick={() => setExpandedText({ 
+                            title: '컴플라이언스', 
+                            content: req.applicable_compliance?.replace(/;$/, '').replace(/;/g, ', ') || '-'
+                          })}
+                        >
+                          {req.applicable_compliance?.replace(/;$/, '').replace(/;/g, ', ') || '-'}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-4">
                           <button
@@ -342,7 +349,7 @@ const ThreatCompliance = () => {
 
                     {expandedItems[`req-${req.id}`] && req.audit_result && (
                       <tr className="bg-gray-50">
-                        <td colSpan="6" className="px-6 py-4">
+                        <td colSpan="7" className="px-6 py-4">
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <h4 className="text-sm font-semibold text-gray-700">진단 결과 상세</h4>
@@ -477,6 +484,10 @@ const ThreatCompliance = () => {
                           <div>
                             <dt className="text-xs text-gray-500">서비스</dt>
                             <dd className="text-sm text-gray-900">{mapping.service || '-'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs text-gray-500">컴플라이언스</dt>
+                            <dd className="text-sm text-gray-900">{mappingDetail.requirement.applicable_compliance?.replace(/;$/, '').replace(/;/g, ', ') || '-'}</dd>
                           </div>
                         </dl>
                       </div>
