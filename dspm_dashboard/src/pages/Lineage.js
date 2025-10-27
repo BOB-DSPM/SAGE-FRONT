@@ -5,10 +5,11 @@ import ReactFlow, {
   Background,
   useNodesState,
   useEdgesState,
+  Position,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
-import { X, Database, Clock, CheckCircle, XCircle, Loader, RefreshCw, ChevronDown } from 'lucide-react';
+import { X, Database, Clock, CheckCircle, XCircle, Loader, RefreshCw, ChevronDown, GitBranch, Layers } from 'lucide-react';
 import { useLineage } from '../hooks/useLineage';
 
 const Lineage = () => {
@@ -21,9 +22,6 @@ const Lineage = () => {
     domains = [],
     loadingPipelines,
     loadPipelines,
-    domainLineageData,
-    loadingDomainLineage,
-    loadLineageByDomain
   } = useLineage();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -36,10 +34,8 @@ const Lineage = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDomainDropdown, setShowDomainDropdown] = useState(false); 
   const [selectedDomain, setSelectedDomain] = useState({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' });
+  const [viewMode, setViewMode] = useState('pipeline');
 
-  // -------------------------
-  // 각 도메인별 파이프라인 개수 계산
-  // -------------------------
   const getDomainPipelineCount = (domainId) => {
     if (domainId === '__untagged__') {
       return pipelines.filter(p => {
@@ -49,20 +45,14 @@ const Lineage = () => {
     }
     
     return pipelines.filter(p => {
-      if (p.matchedDomain) {
-        return p.matchedDomain.domainId === domainId;
-      }
+      if (p.matchedDomain) return p.matchedDomain.domainId === domainId;
       if (p.tags && p.tags['sagemaker:domain-arn']) {
-        const domainArn = p.tags['sagemaker:domain-arn'];
-        return domainArn.includes(domainId);
+        return p.tags['sagemaker:domain-arn'].includes(domainId);
       }
       return false;
     }).length;
   };
 
-  // -------------------------
-  // 도메인으로 필터링된 파이프라인
-  // -------------------------
   const filteredPipelines = selectedDomain 
     ? selectedDomain.id === '__all__'
       ? pipelines
@@ -72,26 +62,18 @@ const Lineage = () => {
             return !hasDomainTag;
           })
         : pipelines.filter(p => {
-            if (p.matchedDomain) {
-              return p.matchedDomain.domainId === selectedDomain.id;
-            }
+            if (p.matchedDomain) return p.matchedDomain.domainId === selectedDomain.id;
             if (p.tags && p.tags['sagemaker:domain-arn']) {
-              const domainArn = p.tags['sagemaker:domain-arn'];
-              return domainArn.includes(selectedDomain.id);
+              return p.tags['sagemaker:domain-arn'].includes(selectedDomain.id);
             }
             return false;
           })
     : pipelines;
 
-  // -------------------------
-  // 안전 렌더링 헬퍼들
-  // -------------------------
   const safeValue = (v) => {
     if (v == null) return 'N/A';
     if (typeof v === 'object') {
-      if ('Get' in v && (typeof v.Get === 'string' || typeof v.Get === 'number' || typeof v.Get === 'boolean')) {
-        return v.Get;
-      }
+      if ('Get' in v) return v.Get;
       try {
         return JSON.stringify(v);
       } catch {
@@ -101,24 +83,21 @@ const Lineage = () => {
     return String(v);
   };
 
-  const formatDateSafe = (val) => {
-    if (val == null) return 'N/A';
-    const unwrapped = (typeof val === 'object' && 'Get' in val) ? val.Get : val;
-    try {
-      const d = new Date(unwrapped);
-      if (isNaN(d)) return safeValue(unwrapped);
-      return d.toLocaleString('ko-KR');
-    } catch {
-      return safeValue(unwrapped);
-    }
+  const formatDuration = (sec) => {
+    if (sec == null || isNaN(sec)) return 'N/A';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
   };
 
-  // -------------------------
-  // 노드 스타일 / status icon
-  // -------------------------
-  const getNodeStyle = (type, status) => {
+  const getNodeStyle = (type, status, isSelected, isConnected, isDimmed) => {
     let background = '#f3f4f6';
     let border = '2px solid #9ca3af';
+    let opacity = 1;
+    let boxShadow = 'none';
 
     if (status === 'Succeeded') {
       background = '#d1fae5';
@@ -129,6 +108,9 @@ const Lineage = () => {
     } else if (status === 'Executing') {
       background = '#dbeafe';
       border = '2px solid #3b82f6';
+    } else if (status === 'Unknown') {
+      background = '#f3f4f6';
+      border = '2px solid #d1d5db';
     }
 
     if (type === 'Condition') {
@@ -136,12 +118,33 @@ const Lineage = () => {
       border = '2px solid #f59e0b';
     }
 
+    // 선택된 노드: 매우 진한 빨간 테두리 + 그림자
+    if (isSelected) {
+      border = '4px solid #dc2626';
+      boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.3)';
+    }
+    // 연결된 노드: 빨간 테두리
+    else if (isConnected) {
+      border = '3px solid #ef4444';
+    }
+
+    if (isDimmed) {
+      opacity = 0.15;
+    }
+
     return {
       background,
       border,
       borderRadius: '8px',
       padding: '12px',
-      minWidth: '150px'
+      width: '180px',
+      height: '80px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      opacity,
+      transition: 'all 0.2s ease',
+      boxShadow,
     };
   };
 
@@ -153,1045 +156,796 @@ const Lineage = () => {
     return null;
   };
 
-  // -------------------------
-  // dagre layout
-  // -------------------------
-  const getLayoutedElements = (nodesArr, edgesArr, graphData) => {
+  const getDataNodeStyle = (nodeType, isSelected, isConnected, isDimmed) => {
+    let border = '2px solid #0284c7';
+    let opacity = 1;
+    let background = '#e0f2fe';
+    let boxShadow = 'none';
+
+    if (nodeType === 'dataArtifact') {
+      background = '#e0f2fe';
+      border = '2px solid #0284c7';
+    } else {
+      background = '#f0fdf4';
+      border = '2px solid #16a34a';
+    }
+
+    // 선택된 노드: 매우 진한 빨간 테두리 + 그림자
+    if (isSelected) {
+      border = '4px solid #dc2626';
+      boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.3)';
+    }
+    // 연결된 노드: 빨간 테두리
+    else if (isConnected) {
+      border = '3px solid #ef4444';
+    }
+
+    if (isDimmed) {
+      opacity = 0.15;
+    }
+
+    return {
+      background,
+      border,
+      borderRadius: '8px',
+      padding: '12px',
+      width: '180px',
+      height: '80px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      opacity,
+      transition: 'all 0.2s ease',
+      boxShadow,
+    };
+  };
+
+  const getPipelineStepOrder = () => {
+    return ['Extract', 'Validate', 'Preprocess', 'Train', 'Evaluate', 'ModelQualityCheck'];
+  };
+
+  const getAllConnectedNodes = useCallback((nodeId, edges) => {
+    const connected = new Set([nodeId]);
+    const toVisit = [nodeId];
+    const visited = new Set();
+
+    while (toVisit.length > 0) {
+      const current = toVisit.pop();
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      edges.forEach(edge => {
+        if (edge.source === current && !connected.has(edge.target)) {
+          connected.add(edge.target);
+          toVisit.push(edge.target);
+        }
+        if (edge.target === current && !connected.has(edge.source)) {
+          connected.add(edge.source);
+          toVisit.push(edge.source);
+        }
+      });
+    }
+
+    return connected;
+  }, []);
+
+  const getConnectedEdges = useCallback((connectedNodeIds, edges) => {
+    const connectedEdgeIds = new Set();
+    
+    edges.forEach(edge => {
+      if (connectedNodeIds.has(edge.source) && connectedNodeIds.has(edge.target)) {
+        connectedEdgeIds.add(edge.id);
+      }
+    });
+
+    return connectedEdgeIds;
+  }, []);
+
+  const onNodeClick = useCallback((event, node) => {
+    setSelectedNode(node.id);
+    setShowPanel(true);
+    setSelectedNodeData(node.data.nodeData || null);
+
+    const connectedNodeIds = getAllConnectedNodes(node.id, edges);
+    const connectedEdgeIds = getConnectedEdges(connectedNodeIds, edges);
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        const isSelected = n.id === node.id;
+        const isConnected = connectedNodeIds.has(n.id) && !isSelected;
+        const isDimmed = !connectedNodeIds.has(n.id);
+
+        return {
+          ...n,
+          style: n.data.nodeData?.type === 'dataArtifact' || n.data.nodeData?.type === 'processNode'
+            ? getDataNodeStyle(n.data.nodeData?.type, isSelected, isConnected, isDimmed)
+            : getNodeStyle(
+                n.data.nodeData?.type || n.data.nodeData?.stepType,
+                n.data.nodeData?.run?.status,
+                isSelected,
+                isConnected,
+                isDimmed
+              ),
+        };
+      })
+    );
+
+    setEdges((eds) =>
+      eds.map((e) => {
+        const isConnected = connectedEdgeIds.has(e.id);
+        return {
+          ...e,
+          animated: false,
+          style: {
+            ...e.style,
+            stroke: isConnected ? '#ef4444' : (e.style?.originalStroke || e.style?.stroke || '#9ca3af'),
+            strokeDasharray: isConnected ? '5,5' : 'none',
+            opacity: isConnected ? 1 : 0.1,
+            strokeWidth: isConnected ? 3 : 2,
+          },
+        };
+      })
+    );
+  }, [edges, setNodes, setEdges, getAllConnectedNodes, getConnectedEdges]);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNode(null);
+    setShowPanel(false);
+    setSelectedNodeData(null);
+
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        style: n.data.nodeData?.type === 'dataArtifact' || n.data.nodeData?.type === 'processNode'
+          ? getDataNodeStyle(n.data.nodeData?.type, false, false, false)
+          : getNodeStyle(
+              n.data.nodeData?.type || n.data.nodeData?.stepType,
+              n.data.nodeData?.run?.status,
+              false,
+              false,
+              false
+            ),
+      }))
+    );
+
+    setEdges((eds) =>
+      eds.map((e) => ({
+        ...e,
+        animated: false,
+        style: {
+          ...e.style,
+          stroke: e.style?.originalStroke || e.style?.stroke || '#9ca3af',
+          strokeDasharray: 'none',
+          opacity: 1,
+          strokeWidth: 2,
+        },
+      }))
+    );
+  }, [setNodes, setEdges]);
+
+  const buildPipelineGraph = useCallback((lineageData) => {
+    console.log('Building pipeline graph from:', lineageData);
+    
+    if (!lineageData?.graphPipeline?.nodes) {
+      console.warn('No graphPipeline.nodes in lineageData');
+      return { nodes: [], edges: [] };
+    }
+
+    const graphData = lineageData.graphPipeline;
+    const stepOrder = getPipelineStepOrder();
+    const newNodes = [];
+    const newEdges = [];
+
+    const sortedNodes = [...graphData.nodes].sort((a, b) => {
+      const orderA = stepOrder.indexOf(a.id);
+      const orderB = stepOrder.indexOf(b.id);
+      if (orderA === -1) return 1;
+      if (orderB === -1) return -1;
+      return orderA - orderB;
+    });
+
+    const nodeWidth = 180;
+    const nodeHeight = 80;
+    const nodeSpacing = 250;
+    const startX = 50;
+    const fixedY = 250;
+
+    sortedNodes.forEach((node, index) => {
+      const nodeId = node.id;
+      const nodeType = node.type;
+      const status = node.run?.status || 'Unknown';
+
+      newNodes.push({
+        id: nodeId,
+        type: 'default',
+        data: {
+          label: (
+            <div style={{ textAlign: 'center', width: '100%' }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                fontSize: '13px',
+                marginBottom: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px'
+              }}>
+                {getStatusIcon(status)}
+                <span>{node.label || nodeId}</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                {nodeType}
+              </div>
+              {node.run?.elapsedSec != null && node.run.elapsedSec > 0 && (
+                <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
+                  {formatDuration(node.run.elapsedSec)}
+                </div>
+              )}
+            </div>
+          ),
+          nodeData: node
+        },
+        style: getNodeStyle(nodeType, status, false, false, false),
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+        position: { 
+          x: startX + (index * nodeSpacing), 
+          y: fixedY 
+        },
+        draggable: false,
+      });
+    });
+
+    for (let i = 1; i < sortedNodes.length; i++) {
+      const prevNode = sortedNodes[i - 1];
+      const currNode = sortedNodes[i];
+      
+      newEdges.push({
+        id: `edge-${prevNode.id}-${currNode.id}`,
+        source: prevNode.id,
+        target: currNode.id,
+        type: 'smoothstep',
+        animated: false,
+        style: { 
+          stroke: '#9ca3af', 
+          strokeWidth: 2,
+          originalStroke: '#9ca3af'
+        },
+      });
+    }
+
+    console.log('Pipeline graph built (linear):', { nodes: newNodes.length, edges: newEdges.length });
+    return { nodes: newNodes, edges: newEdges };
+  }, []);
+
+  const buildDataGraph = useCallback((lineageData) => {
+    console.log('Building data graph from:', lineageData);
+    
+    if (!lineageData?.graphData?.nodes) {
+      console.warn('No graphData.nodes in lineageData');
+      return { nodes: [], edges: [] };
+    }
+
+    const graphData = lineageData.graphData;
+    const pipelineNodes = lineageData.graphPipeline?.nodes || [];
+    const stepOrder = getPipelineStepOrder();
+    
+    const newNodes = [];
+    const newEdges = [];
+    const dataNodeMap = new Map();
+    const processNodeMap = new Map();
+
+    graphData.nodes.forEach((node) => {
+      if (node.type === 'processNode') {
+        processNodeMap.set(node.id, node);
+      } else if (node.type === 'dataArtifact') {
+        dataNodeMap.set(node.id, node);
+      }
+    });
+
+    const sortedProcessNodes = Array.from(processNodeMap.values()).sort((a, b) => {
+      const orderA = stepOrder.indexOf(a.stepId);
+      const orderB = stepOrder.indexOf(b.stepId);
+      if (orderA === -1) return 1;
+      if (orderB === -1) return -1;
+      return orderA - orderB;
+    });
+
+    sortedProcessNodes.forEach((processNode) => {
+      const status = processNode.run?.status || 'Unknown';
+      
+      newNodes.push({
+        id: processNode.id,
+        type: 'default',
+        data: {
+          label: (
+            <div style={{ textAlign: 'center', width: '100%' }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                fontSize: '12px',
+                marginBottom: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px'
+              }}>
+                {getStatusIcon(status)}
+                <span>{processNode.label || 'Process'}</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#6b7280' }}>
+                {processNode.stepType || 'Processing'}
+              </div>
+              {processNode.run?.elapsedSec != null && processNode.run.elapsedSec > 0 && (
+                <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px' }}>
+                  {formatDuration(processNode.run.elapsedSec)}
+                </div>
+              )}
+            </div>
+          ),
+          nodeData: processNode
+        },
+        style: getDataNodeStyle('processNode', false, false, false),
+        position: { x: 0, y: 0 },
+      });
+
+      const pipelineNode = pipelineNodes.find(pn => pn.id === processNode.stepId);
+      if (pipelineNode?.inputs) {
+        pipelineNode.inputs.forEach((input) => {
+          const uri = safeValue(input.uri);
+          if (uri && uri !== 'N/A' && !uri.includes('Get') && !uri.includes('Std:Join') && uri.startsWith('s3://')) {
+            const dataNodeId = `data:${uri}`;
+            if (dataNodeMap.has(dataNodeId) && !newNodes.find(n => n.id === dataNodeId)) {
+              const dataNode = dataNodeMap.get(dataNodeId);
+              
+              newNodes.push({
+                id: dataNodeId,
+                type: 'default',
+                data: {
+                  label: (
+                    <div style={{ textAlign: 'center', width: '100%' }}>
+                      <div style={{ 
+                        fontWeight: 'bold', 
+                        fontSize: '11px',
+                        marginBottom: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px'
+                      }}>
+                        <Database className="w-3 h-3 text-blue-600" />
+                        <span>{input.name || 'Data'}</span>
+                      </div>
+                      <div style={{ 
+                        fontSize: '9px', 
+                        color: '#6b7280', 
+                        wordBreak: 'break-all',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '160px',
+                        margin: '0 auto'
+                      }}>
+                        {uri.split('/').slice(-1)[0]}
+                      </div>
+                    </div>
+                  ),
+                  nodeData: dataNode
+                },
+                style: getDataNodeStyle('dataArtifact', false, false, false),
+                position: { x: 0, y: 0 },
+              });
+
+              newEdges.push({
+                id: `edge-data-${dataNodeId}-${processNode.id}`,
+                source: dataNodeId,
+                target: processNode.id,
+                type: 'smoothstep',
+                animated: false,
+                style: { 
+                  stroke: '#0284c7', 
+                  strokeWidth: 2,
+                  originalStroke: '#0284c7'
+                },
+              });
+            }
+          }
+        });
+      }
+
+      const currentIndex = sortedProcessNodes.indexOf(processNode);
+      if (currentIndex > 0) {
+        const prevProcess = sortedProcessNodes[currentIndex - 1];
+        newEdges.push({
+          id: `edge-proc-${prevProcess.id}-${processNode.id}`,
+          source: prevProcess.id,
+          target: processNode.id,
+          type: 'smoothstep',
+          animated: false,
+          style: { 
+            stroke: '#16a34a', 
+            strokeWidth: 2,
+            originalStroke: '#16a34a'
+          },
+        });
+      }
+    });
+
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
     dagreGraph.setGraph({
       rankdir: 'LR',
-      nodesep: 50,
-      ranksep: 120,
+      nodesep: 100,
+      ranksep: 150,
       ranker: 'network-simplex',
-      align: 'UL',
     });
 
-    nodesArr.forEach((n) => {
-      dagreGraph.setNode(n.id, { 
-        width: 180, 
-        height: 80,
-      });
+    const nodeWidth = 180;
+    const nodeHeight = 80;
+
+    newNodes.forEach((n) => {
+      dagreGraph.setNode(n.id, { width: nodeWidth, height: nodeHeight });
     });
 
-    edgesArr.forEach((e) => {
-      let weight = 1;
-      let minlen = 1;
-      
-      if (
-        (e.source.includes('Processing') && e.target.includes('Training')) ||
-        (e.source.includes('Training') && e.target.includes('Model')) ||
-        (e.source.includes('Model') && e.target.includes('Register'))
-      ) {
-        weight = 10;
-        minlen = 1;
-      } else if (e.label === 'condition' || e.source.includes('Condition') || e.target.includes('Condition')) {
-        weight = 0.1;
-        minlen = 1;
-      } else if (e.style?.stroke === '#10b981') {
-        weight = 5;
-        minlen = 1;
+    newEdges.forEach((e) => {
+      if (e.source && e.target) {
+        dagreGraph.setEdge(e.source, e.target);
       }
-      
-      dagreGraph.setEdge(e.source, e.target, { 
-        minlen: minlen,
-        weight: weight
-      });
     });
 
     try {
       dagre.layout(dagreGraph);
-    } catch (err) {
-      console.warn('dagre.layout failed', err);
-    }
-
-    return nodesArr.map((node) => {
-      const nodeWithPosition = dagreGraph.node(node.id) || { x: 0, y: 0 };
-      return {
-        ...node,
-        position: {
-          x: (nodeWithPosition.x || 0) - 90,
-          y: (nodeWithPosition.y || 0) - 40,
-        },
-      };
-    });
-  };
-
-  // -------------------------
-  // convert functions
-  // -------------------------
-  const convertToNodes = (graphData) => {
-    if (!graphData || !graphData.nodes) return [];
-    return graphData.nodes.map((node) => ({
-      id: node.id,
-      type: 'default',
-      data: {
-        label: (
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-2">
-              <div className="font-semibold text-sm">{safeValue(node.label) || node.id}</div>
-              {node.run?.status && getStatusIcon(node.run.status)}
-            </div>
-            <div className="text-xs text-gray-500">{safeValue(node.type) || 'Step'}</div>
-          </div>
-        )
-      },
-      position: { x: 0, y: 0 },
-      sourcePosition: 'right',
-      targetPosition: 'left',
-      style: getNodeStyle(node.type, node.run?.status),
-    }));
-  };
-
-  const convertToEdges = (graphData) => {
-    if (!graphData || !graphData.edges) return [];
-
-    const edgesOut = [];
-    const edgeSet = new Set();
-
-    const addEdge = (source, target, config = {}) => {
-      const edgeId = `${source}-${target}`;
-      if (edgeSet.has(edgeId)) return false;
       
-      edgesOut.push({
-        id: `e${edgesOut.length}`,
-        source,
-        target,
-        animated: config.animated !== false,
-        style: config.style || { stroke: '#6366f1', strokeWidth: 2 },
-        type: 'smoothstep',
-        label: '',
-        labelStyle: config.labelStyle || { fontSize: 10, fill: '#6b7280' },
-      });
-      
-      edgeSet.add(edgeId);
-      return true;
-    };
-
-    const allEdges = [];
-    
-    graphData.edges.forEach((edge) => {
-      allEdges.push({
-        source: edge.from,
-        target: edge.to,
-        style: { stroke: '#6366f1', strokeWidth: 2 },
-        type: 'api'
-      });
-    });
-
-    if (graphData.nodes) {
-      graphData.nodes.forEach(targetNode => {
-        if (!targetNode.inputs || targetNode.inputs.length === 0) return;
-
-        targetNode.inputs.forEach(input => {
-          if (input.name === 'code') return;
-
-          graphData.nodes.forEach(sourceNode => {
-            if (sourceNode.id === targetNode.id) return;
-            if (!sourceNode.outputs || sourceNode.outputs.length === 0) return;
-
-            const matchingOutput = sourceNode.outputs.find(output => output.uri === input.uri);
-
-            if (matchingOutput) {
-              allEdges.push({
-                source: sourceNode.id,
-                target: targetNode.id,
-                style: { stroke: '#10b981', strokeWidth: 2 },
-                type: 'data'
-              });
-            }
-          });
-        });
-      });
-
-      graphData.nodes.forEach(node => {
-        if (node.type === 'Condition') {
-          const completedNodes = graphData.nodes
-            .filter(n => n.type !== 'Condition' && n.run?.endTime)
-            .sort((a, b) => {
-              const aTime = new Date(a.run?.endTime || 0);
-              const bTime = new Date(b.run?.endTime || 0);
-              return bTime - aTime;
-            });
-
-          if (completedNodes.length > 0) {
-            allEdges.push({
-              source: completedNodes[0].id,
-              target: node.id,
-              style: { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5,5' },
-              type: 'condition'
-            });
-          }
-        }
-      });
-    }
-
-    const hasPath = (from, to, excludeEdge) => {
-      if (from === to) return false;
-      
-      const visited = new Set();
-      const queue = [from];
-      
-      while (queue.length > 0) {
-        const current = queue.shift();
-        
-        if (current === to) return true;
-        if (visited.has(current)) continue;
-        visited.add(current);
-        
-        allEdges.forEach(edge => {
-          if (excludeEdge && edge.source === excludeEdge.source && edge.target === excludeEdge.target) {
-            return;
-          }
-          
-          if (edge.source === current && !visited.has(edge.target)) {
-            queue.push(edge.target);
-          }
-        });
-      }
-      
-      return false;
-    };
-
-    allEdges.forEach(edge => {
-      const hasIndirectPath = hasPath(edge.source, edge.target, edge);
-      
-      if (!hasIndirectPath) {
-        addEdge(edge.source, edge.target, {
-          style: edge.style,
-        });
-      }
-    });
-
-    return edgesOut;
-  };
-
-  // -------------------------
-  // 도메인 선택 시 처리
-  // -------------------------
-  const handleDomainSelect = async (domain) => {
-    setSelectedDomain(domain);
-    setShowDomainDropdown(false);
-    
-    // 전체 또는 미분류 도메인인 경우 기본 필터링만 적용
-    if (domain.id === '__all__' || domain.id === '__untagged__') {
-      return;
-    }
-    
-    try {
-      // 도메인이 있는 경우 해당 도메인의 모든 파이프라인 라인리지 로드
-      const data = await loadLineageByDomain(domain.name, domain.region);
-      console.log('Domain lineage data:', data);
-      
-      // 도메인 라인리지 데이터 활용은 향후 요구사항에 따라 구현
-    } catch (err) {
-      console.error('Failed to load domain lineage:', err);
-    }
-  };
-
-  // -------------------------
-  // pipeline 선택 시 lineage 로드
-  // -------------------------
-  const handlePipelineSelect = async (pipeline) => {
-    setSelectedPipeline(pipeline);
-    setShowPipelineList(false);
-
-    try {
-      // 파이프라인이 속한 도메인 정보 확인
-      let domainName = null;
-      if (pipeline.matchedDomain && pipeline.matchedDomain.domainName) {
-        domainName = pipeline.matchedDomain.domainName;
-      } else if (pipeline.tags && pipeline.tags['DomainName']) {
-        domainName = pipeline.tags['DomainName'];
-      }
-      
-      // 라인리지 로드 (도메인 정보 포함)
-      const data = await loadLineage(pipeline.name, pipeline.region, domainName);
-
-      if (data?.graph) {
-        const convertedNodes = convertToNodes(data.graph);
-        const convertedEdges = convertToEdges(data.graph);
-
-        const filteredEdges = convertedEdges.filter(edge => 
-          !(edge.source === 'Preprocess' && edge.target === 'Evaluate')
-        );
-
-        const layoutedNodes = getLayoutedElements(convertedNodes, filteredEdges, data.graph);
-
-        setNodes(layoutedNodes);
-        setEdges(filteredEdges);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // -------------------------
-  // initial pipelines load
-  // -------------------------
-  useEffect(() => {
-    // 파이프라인 목록 로드 (새 API 사용)
-    loadPipelines({
-      regions: 'ap-northeast-2',
-      includeLatestExec: true
-    });
-  }, [loadPipelines]);
-
-  // -------------------------
-  // node click - details + highlight
-  // -------------------------
-  const onNodeClick = useCallback((event, node) => {
-    setSelectedNode(node.id);
-
-    const nodeDetail = lineageData?.graph?.nodes?.find(n => n.id === node.id);
-    if (nodeDetail) {
-      const nodeInputs = nodeDetail.inputs || [];
-      const nodeOutputs = nodeDetail.outputs || [];
-
-      const inputArtifacts = nodeInputs.map(input => {
-        const artifact = lineageData?.graph?.artifacts?.find(a => a.uri === input.uri);
-        return { ...input, s3: artifact?.s3 };
-      });
-
-      const outputArtifacts = nodeOutputs.map(output => {
-        const artifact = lineageData?.graph?.artifacts?.find(a => a.uri === output.uri);
-        return { ...output, s3: artifact?.s3 };
-      });
-
-      setSelectedNodeData({
-        id: nodeDetail.id,
-        type: nodeDetail.type || 'Unknown',
-        label: nodeDetail.label || nodeDetail.id,
-        status: nodeDetail.run?.status || 'Unknown',
-        startTime: nodeDetail.run?.startTime || 'N/A',
-        endTime: nodeDetail.run?.endTime || 'N/A',
-        elapsedSec: nodeDetail.run?.elapsedSec || 'N/A',
-        jobArn: nodeDetail.run?.jobArn || 'N/A',
-        jobName: nodeDetail.run?.jobName || 'N/A',
-        metrics: nodeDetail.run?.metrics || {},
-        inputs: inputArtifacts,
-        outputs: outputArtifacts,
-      });
-      setShowPanel(true);
-    }
-
-    const findDownstreamNodes = (startNodeId, visited = new Set()) => {
-      if (visited.has(startNodeId)) return visited;
-      visited.add(startNodeId);
-      edges.forEach(edge => {
-        if (edge.source === startNodeId && !visited.has(edge.target)) {
-          findDownstreamNodes(edge.target, visited);
-        }
-      });
-      return visited;
-    };
-
-    const findUpstreamNodes = (startNodeId, visited = new Set()) => {
-      if (visited.has(startNodeId)) return visited;
-      visited.add(startNodeId);
-      edges.forEach(edge => {
-        if (edge.target === startNodeId && !visited.has(edge.source)) {
-          findUpstreamNodes(edge.source, visited);
-        }
-      });
-      return visited;
-    };
-
-    const downstreamNodes = findDownstreamNodes(node.id);
-    const upstreamNodes = findUpstreamNodes(node.id);
-    const allConnectedNodes = new Set([...downstreamNodes, ...upstreamNodes]);
-
-    setEdges((eds) =>
-      eds.map((edge) => {
-        const isHighlighted = allConnectedNodes.has(edge.source) && allConnectedNodes.has(edge.target);
-        return {
-          ...edge,
-          style: { 
-            ...edge.style, 
-            stroke: isHighlighted ? '#ef4444' : '#d1d5db', 
-            strokeWidth: isHighlighted ? 3 : 1 
-          },
-          animated: isHighlighted,
-        };
-      })
-    );
-
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (n.id === node.id) {
-          return {
-            ...n,
-            style: {
-              ...n.style,
-              border: '3px solid #ef4444',
-              boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.2)',
-              opacity: 1,
-            },
-          };
-        } else if (allConnectedNodes.has(n.id)) {
-          return {
-            ...n,
-            style: {
-              ...n.style,
-              border: '2px solid #ef4444',
-              opacity: 1,
-            },
-          };
-        } else {
-          return {
-            ...n,
-            style: {
-              ...n.style,
-              opacity: 0.3,
-            },
+      const layoutedNodes = newNodes.map((n) => {
+        const nodeWithPosition = dagreGraph.node(n.id);
+        if (!nodeWithPosition) {
+          return { 
+            ...n, 
+            sourcePosition: Position.Right, 
+            targetPosition: Position.Left,
+            position: { x: 0, y: 0 }
           };
         }
-      })
-    );
-  }, [edges, setEdges, setNodes, lineageData]);
-
-  // -------------------------
-  // pane click - reset highlight
-  // -------------------------
-  const onPaneClick = useCallback(() => {
-    setSelectedNode(null);
-    setShowPanel(false);
-
-    setEdges((eds) =>
-      eds.map((edge) => ({
-        ...edge,
-        style: { ...edge.style, stroke: '#6366f1', strokeWidth: 2 },
-        animated: true,
-      }))
-    );
-
-    setNodes((nds) =>
-      nds.map((n) => {
-        const originalStyle = getNodeStyle(
-          lineageData?.graph?.nodes?.find(node => node.id === n.id)?.type,
-          lineageData?.graph?.nodes?.find(node => node.id === n.id)?.run?.status
-        );
         return {
           ...n,
-          style: {
-            ...originalStyle,
-            boxShadow: 'none',
-            opacity: 1,
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
+          position: {
+            x: nodeWithPosition.x - nodeWidth / 2,
+            y: nodeWithPosition.y - nodeHeight / 2,
           },
         };
-      })
-    );
-  }, [setEdges, setNodes, lineageData]);
+      });
 
-  // -------------------------
-  // duration helper
-  // -------------------------
-  const formatDuration = (seconds) => {
-    if (seconds == null || seconds === 'N/A') return 'N/A';
-    if (typeof seconds === 'object' && 'Get' in seconds) {
-      const val = seconds.Get;
-      if (typeof val === 'number') seconds = val;
-      else return safeValue(seconds);
+      console.log('Data graph built:', { nodes: layoutedNodes.length, edges: newEdges.length });
+      return { nodes: layoutedNodes, edges: newEdges };
+    } catch (error) {
+      console.error('Dagre layout error:', error);
+      return { nodes: newNodes, edges: newEdges };
     }
-    const secsNum = Number(seconds);
-    if (isNaN(secsNum)) return safeValue(seconds);
-    const mins = Math.floor(secsNum / 60);
-    const secs = secsNum % 60;
-    return `${mins}분 ${secs}초`;
+  }, []);
+
+  useEffect(() => {
+    if (lineageData) {
+      console.log('Lineage data changed, view mode:', viewMode);
+      if (viewMode === 'pipeline') {
+        const { nodes: pipelineNodes, edges: pipelineEdges } = buildPipelineGraph(lineageData);
+        setNodes(pipelineNodes);
+        setEdges(pipelineEdges);
+      } else {
+        const { nodes: dataNodes, edges: dataEdges } = buildDataGraph(lineageData);
+        setNodes(dataNodes);
+        setEdges(dataEdges);
+      }
+      setSelectedNode(null);
+      setShowPanel(false);
+      setSelectedNodeData(null);
+    }
+  }, [lineageData, viewMode, buildPipelineGraph, buildDataGraph, setNodes, setEdges]);
+
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+    setSelectedNode(null);
+    setShowPanel(false);
+    setSelectedNodeData(null);
   };
 
-  // -------------------------
-  // render
-  // -------------------------
+  const handlePipelineSelect = useCallback(async (pipeline) => {
+    setSelectedPipeline(pipeline);
+    setShowPipelineList(false);
+    setShowDropdown(false);
+
+    const region = pipeline.region || 'ap-northeast-2';
+    let domain = null;
+    
+    if (pipeline.matchedDomain && pipeline.matchedDomain.domainName) {
+      domain = pipeline.matchedDomain.domainName;
+    } else if (pipeline.tags && pipeline.tags['DomainName']) {
+      domain = pipeline.tags['DomainName'];
+    }
+
+    await loadLineage(pipeline.name, region, domain);
+  }, [loadLineage]);
+
+  useEffect(() => {
+    loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
+  }, [loadPipelines]);
+
+  const handleDomainSelect = (domain) => {
+    setSelectedDomain(domain);
+    setShowDomainDropdown(false);
+    setSelectedPipeline(null);
+    setShowPipelineList(true);
+    
+    setNodes([]);
+    setEdges([]);
+    setSelectedNode(null);
+    setShowPanel(false);
+    setSelectedNodeData(null);
+  };
+
   return (
-    <div className="space-y-6">
-      {/* 컨트롤 패널 */}
-      <div className="bg-white rounded-lg p-4 shadow-sm border">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">SageMaker Pipelines</h3>
+    <div className="h-screen flex flex-col bg-gray-50">
+      <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm">
+        <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
+        
+        <div className="relative mr-4">
           <button
-            onClick={() => loadPipelines({
-              regions: 'ap-northeast-2',
-              includeLatestExec: true
-            })}
-            disabled={loadingPipelines}
-            className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2"
+            onClick={() => setShowDomainDropdown(!showDomainDropdown)}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 ${loadingPipelines ? 'animate-spin' : ''}`} />
-            새로고침
+            <Database className="w-4 h-4" />
+            <span className="text-sm font-medium">{selectedDomain.name}</span>
+            <ChevronDown className="w-4 h-4" />
           </button>
-        </div>
-
-        {error && (
-          <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {safeValue(error)}
-          </div>
-        )}
-
-        {/* 도메인 선택 */}
-        <div className="space-y-2 mb-4">
-          <label className="text-sm font-medium text-gray-700">도메인 필터</label>
-          <div className="relative">
-            <button
-              onClick={() => setShowDomainDropdown(!showDomainDropdown)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white flex items-center justify-between hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <span className="text-gray-900">
-                {selectedDomain 
-                  ? `${safeValue(selectedDomain.name)} (${filteredPipelines.length}개)`
-                  : '전체 도메인'}
-              </span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${showDomainDropdown ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showDomainDropdown && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                <div className="border-b border-gray-200">
-                  <button
-                    onClick={() => {
-                      handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' });
-                    }}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                  >
-                    <div className="font-medium text-sm text-gray-900">전체 도메인 ({pipelines.length}개)</div>
-                  </button>
-                </div>
-
-                {/* 도메인 ID 목록 */}
-                {domains.length > 0 && (
-                  <div className="border-b border-gray-200">
-                    {domains.map((domain, index) => {
-                      const count = getDomainPipelineCount(domain.id);
-                      return (
-                        <button
-                          key={`domain-${index}`}
-                          onClick={() => {
-                            handleDomainSelect(domain);
-                          }}
-                          className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                        >
-                          <div className="font-medium text-sm text-gray-900">{domain.name || domain.id}</div>
-                          <div className="text-xs text-gray-500">{count}개 파이프라인</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* 기타 (도메인 미지정) */}
-                {(() => {
-                  const untaggedCount = getDomainPipelineCount('__untagged__');
-                  if (untaggedCount > 0) {
-                    return (
-                      <div>
-                        <button
-                          onClick={() => {
-                            handleDomainSelect({ id: '__untagged__', name: '기타', region: 'ap-northeast-2' });
-                          }}
-                          className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                        >
-                          <div className="font-medium text-sm text-gray-900">기타</div>
-                          <div className="text-xs text-gray-500">{untaggedCount}개 파이프라인</div>
-                        </button>
-                      </div>
-                    );
-                  }
-                })()}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 파이프라인 선택 */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">
-            파이프라인 선택 
-            {selectedDomain && (
-              <span className="text-xs text-gray-500 ml-2">
-                ({filteredPipelines.length}개)
-              </span>
-            )}
-          </label>
-          {loadingPipelines ? (
-            <div className="text-center py-4 text-gray-600">파이프라인 목록을 불러오는 중...</div>
-          ) : (
-            <div className="relative">
-              <button
-                onClick={() => setShowDropdown(!showDropdown)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white flex items-center justify-between hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          
+          {showDomainDropdown && (
+            <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div 
+                onClick={() => handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })}
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
               >
-                <span className="text-gray-900">
-                  {selectedPipeline ? safeValue(selectedPipeline.name) : '-- 파이프라인을 선택하세요 --'}
-                </span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {filteredPipelines.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                      {selectedDomain ? '선택한 도메인에 파이프라인이 없습니다' : '파이프라인이 없습니다'}
-                    </div>
-                  ) : (
-                    filteredPipelines.map((pipeline, index) => (
-                      <button
-                        key={index}
-                        onClick={() => {
-                          handlePipelineSelect(pipeline);
-                          setShowDropdown(false);
-                        }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                      >
-                        <div className="font-medium text-sm text-gray-900">{safeValue(pipeline.name)}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {safeValue(pipeline.region)} - {formatDateSafe(pipeline.lastModifiedTime)}
-                        </div>
-                      </button>
-                    ))
-                  )}
+                <div className="font-medium text-sm">전체 도메인</div>
+                <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
+              </div>
+              
+              {domains.map((domain) => (
+                <div 
+                  key={domain.id}
+                  onClick={() => handleDomainSelect(domain)}
+                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                >
+                  <div className="font-medium text-sm">{domain.name}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {domain.region} | {getDomainPipelineCount(domain.id)}개
+                  </div>
                 </div>
-              )}
+              ))}
+              
+              <div 
+                onClick={() => handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })}
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+              >
+                <div className="font-medium text-sm">태그 없음</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {getDomainPipelineCount('__untagged__')}개
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        {/* 선택된 도메인/파이프라인 정보 */}
-        {(selectedDomain || selectedPipeline) && (
-          <div className="mt-3 space-y-2">
-            {selectedDomain && selectedDomain.id !== '__all__' && (
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                <div className="text-sm font-semibold text-purple-900">
-                  Domain: {safeValue(selectedDomain.name)}
-                </div>
-              </div>
-            )}
-            {selectedPipeline && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="text-sm font-semibold text-blue-900">
-                  Pipeline: {safeValue(selectedPipeline.name)}
-                </div>
-                <div className="text-xs text-blue-700 mt-1">
-                  Region: {safeValue(selectedPipeline.region)} | Last Modified: {formatDateSafe(selectedPipeline.lastModifiedTime)}
-                </div>
+        {showPipelineList && (
+          <div className="relative">
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              disabled={loadingPipelines}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              {loadingPipelines ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">로딩 중...</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm font-medium">
+                    {selectedPipeline ? selectedPipeline.name : '파이프라인 선택'}
+                  </span>
+                  <ChevronDown className="w-4 h-4" />
+                </>
+              )}
+            </button>
+            
+            {showDropdown && !loadingPipelines && (
+              <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                {filteredPipelines.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-gray-500">
+                    파이프라인이 없습니다
+                  </div>
+                ) : (
+                  filteredPipelines.map((pipeline) => (
+                    <div 
+                      key={pipeline.arn}
+                      onClick={() => handlePipelineSelect(pipeline)}
+                      className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                    >
+                      <div className="font-medium text-sm">{pipeline.name}</div>
+                      <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
         )}
+
+        {selectedPipeline && lineageData && (
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => handleViewModeChange('pipeline')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                viewMode === 'pipeline'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <GitBranch className="w-4 h-4" />
+              <span className="text-sm font-medium">파이프라인 관점</span>
+            </button>
+            <button
+              onClick={() => handleViewModeChange('data')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                viewMode === 'data'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span className="text-sm font-medium">데이터 관점</span>
+            </button>
+          </div>
+        )}
+
+        {selectedPipeline && (
+          <button
+            onClick={() => {
+              setSelectedPipeline(null);
+              setShowPipelineList(true);
+              setNodes([]);
+              setEdges([]);
+            }}
+            className="ml-4 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      {/* 메인 다이어그램 */}
-      {selectedPipeline && (
-        <div className="flex gap-6">
-          <div className={`bg-white rounded-lg shadow-sm border ${showPanel ? 'flex-1' : 'w-full'}`} style={{ height: '650px' }}>
-            <div className="p-4 border-b">
-              <h3 className="text-lg font-semibold">Data Flow Lineage</h3>
-              <p className="text-sm text-gray-600">
-                {selectedNode 
-                  ? 'Click on background to reset | Click node for details' 
-                  : 'Click on a node to highlight its connections and view details'
-                }
-              </p>
-            </div>
-            <div style={{ height: 'calc(100% - 80px)' }}>
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-gray-600">데이터를 불러오는 중...</div>
-                </div>
-              ) : nodes.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-gray-500">파이프라인을 선택하세요</div>
-                </div>
-              ) : (
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onNodeClick={onNodeClick}
-                  onPaneClick={onPaneClick}
-                  fitView
-                  attributionPosition="bottom-left"
-                  connectionLineType="smoothstep"
-                  defaultEdgeOptions={{
-                    type: 'smoothstep',
-                  }}
-                >
-                  <Controls />
-                  <Background variant="dots" gap={16} size={1} color="#d1d5db" />
-                </ReactFlow>
-              )}
+      <div className="flex-1 relative">
+        {loading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
+            <div className="text-center">
+              <Loader className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-2" />
+              <p className="text-gray-600">라인리지를 불러오는 중...</p>
             </div>
           </div>
+        ) : error ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <XCircle className="w-12 h-12 text-red-600 mx-auto mb-2" />
+              <p className="text-red-600 font-semibold mb-2">오류가 발생했습니다</p>
+              <p className="text-gray-600 text-sm">{error}</p>
+            </div>
+          </div>
+        ) : nodes.length > 0 ? (
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            attributionPosition="bottom-left"
+          >
+            <Background color="#e5e7eb" gap={16} />
+            <Controls />
+          </ReactFlow>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <Database className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg font-medium">파이프라인을 선택하세요</p>
+            </div>
+          </div>
+        )}
 
-          {/* 사이드 패널 */}
-          {showPanel && selectedNodeData && (
-            <div className="w-[500px] bg-white rounded-lg shadow-lg border overflow-hidden flex flex-col" style={{ height: '650px' }}>
-              <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-semibold">Step Details</h3>
-                  {getStatusIcon(selectedNodeData.status)}
-                </div>
-                <button
-                  onClick={() => setShowPanel(false)}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors"
-                >
+        {showPanel && selectedNodeData && (
+          <div className="absolute right-0 top-0 bottom-0 w-96 bg-white border-l border-gray-200 shadow-lg overflow-y-auto z-20">
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">상세 정보</h3>
+                <button onClick={() => {
+                  setShowPanel(false);
+                  onPaneClick();
+                }} className="p-1 hover:bg-gray-100 rounded">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                {/* 기본 정보 */}
+              <div className="space-y-4 text-sm">
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                    <Database className="w-4 h-4 mr-2" />
-                    Basic Information
-                  </h4>
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-xs text-gray-500">Step ID</label>
-                      <p className="text-sm font-medium">{safeValue(selectedNodeData.id)}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Type</label>
-                      <p className="text-sm font-medium">{safeValue(selectedNodeData.type)}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Status</label>
-                      <p className="text-sm font-medium">{safeValue(selectedNodeData.status)}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Job Name</label>
-                      <p className="text-sm font-mono text-xs break-all">{safeValue(selectedNodeData.jobName)}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Job ARN</label>
-                      <p className="text-sm font-mono text-xs break-all">{safeValue(selectedNodeData.jobArn)}</p>
-                    </div>
-                  </div>
+                  <div className="font-semibold text-gray-700 mb-2">타입:</div>
+                  <div>{safeValue(selectedNodeData.type || selectedNodeData.stepType)}</div>
                 </div>
+                
+                {selectedNodeData.run && (
+                  <>
+                    <div>
+                      <div className="font-semibold text-gray-700 mb-2">상태:</div>
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(selectedNodeData.run.status)}
+                        <span>{safeValue(selectedNodeData.run.status)}</span>
+                      </div>
+                    </div>
+                    {selectedNodeData.run.elapsedSec != null && (
+                      <div>
+                        <div className="font-semibold text-gray-700 mb-2">소요 시간:</div>
+                        <div>{formatDuration(selectedNodeData.run.elapsedSec)}</div>
+                      </div>
+                    )}
+                  </>
+                )}
 
-                {/* 실행 정보 */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                    <Clock className="w-4 h-4 mr-2" />
-                    Execution Info
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Start Time:</span>
-                      <span className="font-medium text-xs">
-                        {selectedNodeData.startTime !== 'N/A' 
-                          ? formatDateSafe(selectedNodeData.startTime)
-                          : 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">End Time:</span>
-                      <span className="font-medium text-xs">
-                        {selectedNodeData.endTime !== 'N/A' 
-                          ? formatDateSafe(selectedNodeData.endTime)
-                          : 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Duration:</span>
-                      <span className="font-medium">{safeValue(formatDuration(selectedNodeData.elapsedSec))}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 메트릭 */}
-                {selectedNodeData.metrics && Object.keys(selectedNodeData.metrics).length > 0 && (
+                {selectedNodeData.uri && (
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Metrics</h4>
-                    <div className="space-y-2">
-                      {Object.entries(selectedNodeData.metrics).map(([key, value]) => (
-                        <div key={key} className="p-2 bg-blue-50 rounded flex justify-between">
-                          <span className="text-xs font-medium text-blue-700">{safeValue(key)}:</span>
-                          <span className="text-xs font-bold text-blue-900">
-                            {typeof value === 'number' ? value.toFixed(4) : safeValue(value)}
-                          </span>
-                        </div>
-                      ))}
+                    <div className="font-semibold text-gray-700 mb-2">URI:</div>
+                    <div className="font-mono text-xs break-all bg-gray-50 p-2 rounded">
+                      {selectedNodeData.uri}
                     </div>
                   </div>
                 )}
 
-                {/* Inputs */}
-                {selectedNodeData.inputs && selectedNodeData.inputs.length > 0 && (
+                {selectedNodeData.meta?.s3 && (
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Inputs</h4>
-                    <div className="space-y-3">
-                      {selectedNodeData.inputs.map((input, index) => (
-                        <div key={index} className="p-3 bg-green-50 border border-green-200 rounded">
-                          <div className="text-xs font-semibold text-green-900 mb-1">
-                            {safeValue(input.name)}
-                          </div>
-                          <div className="text-xs font-mono text-green-700 break-all mb-2">
-                            {safeValue(input.uri)}
-                          </div>
-                          {input.s3 && (
-                            <div className="mt-2 pt-2 border-t border-green-200 space-y-1 text-xs">
-                              {/* Bucket */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-green-600">Bucket:</span>
-                                <span className="font-medium font-mono text-[10px] truncate max-w-[200px]" title={input.s3.bucket}>
-                                  {safeValue(input.s3.bucket)}
-                                </span>
-                              </div>
-                              
-                              {/* Region */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-green-600">Region:</span>
-                                <span className="font-medium">{safeValue(input.s3.region)}</span>
-                              </div>
-                              
-                              {/* Encryption */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-green-600">Encryption:</span>
-                                <span className="font-medium">{safeValue(input.s3.encryption)}</span>
-                              </div>
-                              
-                              {/* Versioning */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-green-600">Versioning:</span>
-                                <span className="font-medium">{safeValue(input.s3.versioning)}</span>
-                              </div>
-                              
-                              {/* Public Access */}
-                              {input.s3.publicAccess && (
-                                <div className="flex items-center justify-between">
-                                  <span className="text-green-600">Public Access:</span>
-                                  <span className={`font-medium px-2 py-0.5 rounded text-xs ${
-                                    input.s3.publicAccess === 'Blocked' 
-                                      ? 'bg-green-700 text-white' 
-                                      : 'bg-red-100 text-red-700'
-                                  }`}>
-                                    {safeValue(input.s3.publicAccess)}
-                                  </span>
-                                </div>
-                              )}
-                              
-                              {/* Tags - Collapsible */}
-                              {input.s3.tags && Object.keys(input.s3.tags).length > 0 && (
-                                <div className="mt-2">
-                                  <details className="group">
-                                    <summary className="text-xs font-medium text-green-700 cursor-pointer hover:text-green-900 flex items-center gap-1">
-                                      <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                      </svg>
-                                      Tags ({Object.keys(input.s3.tags).length})
-                                    </summary>
-                                    <div className="mt-2 space-y-1 pl-4 max-h-40 overflow-y-auto bg-green-100 rounded p-2">
-                                      {Object.entries(input.s3.tags).map(([k, v]) => (
-                                        <div key={k} className="text-[10px] border-b border-green-200 last:border-b-0 pb-1">
-                                          <div className="text-green-700 font-semibold break-all">
-                                            {safeValue(k)}:
-                                          </div>
-                                          <div className="text-green-900 break-all pl-2">
-                                            {safeValue(v)}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </details>
-                                </div>
-                              )}
-                              
-                              {/* S3 Console Link */}
-                              <div className="mt-2 pt-2 border-t border-green-200">
-                                <a 
-                                  href={`https://s3.console.aws.amazon.com/s3/buckets/${input.s3.bucket}?region=${input.s3.region}&prefix=${encodeURIComponent(input.uri.replace(`s3://${input.s3.bucket}/`, ''))}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-green-700 hover:text-green-900 hover:underline flex items-center gap-1"
-                                >
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                  S3 콘솔에서 보기
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Outputs */}
-                {selectedNodeData.outputs && selectedNodeData.outputs.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Outputs</h4>
-                    <div className="space-y-3">
-                      {selectedNodeData.outputs.map((output, index) => (
-                        <div key={index} className="p-3 bg-purple-50 border border-purple-200 rounded">
-                          <div className="text-xs font-semibold text-purple-900 mb-1">
-                            {safeValue(output.name)}
-                          </div>
-                          <div className="text-xs font-mono text-purple-700 break-all mb-2">
-                            {safeValue(output.uri)}
-                          </div>
-                          {output.s3 && (
-                            <div className="mt-2 pt-2 border-t border-purple-200 space-y-1 text-xs">
-                              {/* Bucket */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-purple-600">Bucket:</span>
-                                <span className="font-medium font-mono text-[10px] truncate max-w-[200px]" title={output.s3.bucket}>
-                                  {safeValue(output.s3.bucket)}
-                                </span>
-                              </div>
-                              
-                              {/* Region */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-purple-600">Region:</span>
-                                <span className="font-medium">{safeValue(output.s3.region)}</span>
-                              </div>
-                              
-                              {/* Encryption */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-purple-600">Encryption:</span>
-                                <span className="font-medium">{safeValue(output.s3.encryption)}</span>
-                              </div>
-                              
-                              {/* Versioning */}
-                              <div className="flex items-center justify-between">
-                                <span className="text-purple-600">Versioning:</span>
-                                <span className="font-medium">{safeValue(output.s3.versioning)}</span>
-                              </div>
-                              
-                              {/* Public Access */}
-                              {output.s3.publicAccess && (
-                                <div className="flex items-center justify-between">
-                                  <span className="text-purple-600">Public Access:</span>
-                                  <span className={`font-medium px-2 py-0.5 rounded text-xs ${
-                                    output.s3.publicAccess === 'Blocked' 
-                                      ? 'bg-purple-700 text-white' 
-                                      : 'bg-red-100 text-red-700'
-                                  }`}>
-                                    {safeValue(output.s3.publicAccess)}
-                                  </span>
-                                </div>
-                              )}
-                              
-                              {/* Tags - Collapsible */}
-                              {output.s3.tags && Object.keys(output.s3.tags).length > 0 && (
-                                <div className="mt-2">
-                                  <details className="group">
-                                    <summary className="text-xs font-medium text-purple-700 cursor-pointer hover:text-purple-900 flex items-center gap-1">
-                                      <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                      </svg>
-                                      Tags ({Object.keys(output.s3.tags).length})
-                                    </summary>
-                                    <div className="mt-2 space-y-1 pl-4 max-h-40 overflow-y-auto bg-purple-100 rounded p-2">
-                                      {Object.entries(output.s3.tags).map(([k, v]) => (
-                                        <div key={k} className="text-[10px] border-b border-purple-200 last:border-b-0 pb-1">
-                                          <div className="text-purple-700 font-semibold break-all">
-                                            {safeValue(k)}:
-                                          </div>
-                                          <div className="text-purple-900 break-all pl-2">
-                                            {safeValue(v)}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </details>
-                                </div>
-                              )}
-                              
-                              {/* S3 Console Link */}
-                              <div className="mt-2 pt-2 border-t border-purple-200">
-                                <a 
-                                  href={`https://s3.console.aws.amazon.com/s3/buckets/${output.s3.bucket}?region=${output.s3.region}&prefix=${encodeURIComponent(output.uri.replace(`s3://${output.s3.bucket}/`, ''))}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-purple-700 hover:text-purple-900 hover:underline flex items-center gap-1"
-                                >
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                  S3 콘솔에서 보기
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                    <div className="font-semibold text-gray-700 mb-2">S3 정보:</div>
+                    <div className="space-y-1 bg-gray-50 p-2 rounded text-xs">
+                      <div><span className="text-gray-600">Bucket:</span> {selectedNodeData.meta.s3.bucket}</div>
+                      <div><span className="text-gray-600">Region:</span> {selectedNodeData.meta.s3.region}</div>
+                      <div><span className="text-gray-600">Encryption:</span> {selectedNodeData.meta.s3.encryption}</div>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
-      {/* 파이프라인 요약 */}
       {lineageData?.summary && selectedPipeline && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg p-4 shadow-sm border">
-            <p className="text-sm text-gray-600">Overall Status</p>
-            <div className="flex items-center gap-2 mt-1">
-              {getStatusIcon(lineageData.summary.overallStatus)}
-              <p className="text-xl font-bold text-gray-900">{safeValue(lineageData.summary.overallStatus)}</p>
+        <div className="p-4 bg-white border-t border-gray-200">
+          <div className="grid grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-4 shadow-sm border">
+              <p className="text-sm text-gray-600">Overall Status</p>
+              <div className="flex items-center gap-2 mt-1">
+                {getStatusIcon(lineageData.summary.overallStatus)}
+                <p className="text-xl font-bold">{safeValue(lineageData.summary.overallStatus)}</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 shadow-sm border">
+              <p className="text-sm text-gray-600">Failed Steps</p>
+              <p className="text-2xl font-bold text-red-600">{lineageData.summary.nodeStatus?.Failed || 0}</p>
+            </div>
+            <div className="bg-white rounded-lg p-4 shadow-sm border">
+              <p className="text-sm text-gray-600">Total Steps</p>
+              <p className="text-2xl font-bold">{nodes.length}</p>
+            </div>
+            <div className="bg-white rounded-lg p-4 shadow-sm border">
+              <p className="text-sm text-gray-600">Duration</p>
+              <p className="text-2xl font-bold">{formatDuration(lineageData.summary.elapsedSec)}</p>
             </div>
           </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm border">
-            <p className="text-sm text-gray-600">Succeeded Steps</p>
-            <p className="text-2xl font-bold text-green-600">{safeValue(lineageData.summary.nodeStatus?.Succeeded) || 0}</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm border">
-            <p className="text-sm text-gray-600">Total Steps</p>
-            <p className="text-2xl font-bold text-gray-900">{safeValue(nodes.length)}</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm border">
-            <p className="text-sm text-gray-600">Total Duration</p>
-            <p className="text-2xl font-bold text-gray-900">{safeValue(formatDuration(lineageData.summary.elapsedSec))}</p>
-          </div>
-        </div>
-      )}
-
-      {/* 도메인 라인리지 요약 (필요한 경우) */}
-      {domainLineageData && selectedDomain && selectedDomain.id !== '__all__' && selectedDomain.id !== '__untagged__' && !selectedPipeline && (
-        <div className="bg-white rounded-lg p-4 shadow-sm border mt-4">
-          <h3 className="text-lg font-semibold mb-4">도메인 파이프라인 요약</h3>
-          {loadingDomainLineage ? (
-            <div className="text-center py-4 text-gray-600">도메인 라인리지 정보를 불러오는 중...</div>
-          ) : (
-            <div className="space-y-4">
-              {domainLineageData.pipelines && domainLineageData.pipelines.length > 0 ? (
-                domainLineageData.pipelines.map((pipeline, index) => (
-                  <div key={index} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <div className="font-semibold">{pipeline.name}</div>
-                      {pipeline.status && getStatusIcon(pipeline.status)}
-                    </div>
-                    {pipeline.lastRun && (
-                      <div className="text-xs text-gray-600 mt-1">
-                        Last run: {formatDateSafe(pipeline.lastRun.startTime)} | 
-                        Duration: {formatDuration(pipeline.lastRun.elapsedSec)}
-                      </div>
-                    )}
-                    <button 
-                      onClick={() => {
-                        const pipelineObj = pipelines.find(p => p.name === pipeline.name && p.region === selectedDomain.region);
-                        if (pipelineObj) {
-                          handlePipelineSelect(pipelineObj);
-                        }
-                      }}
-                      className="mt-2 text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      라인리지 보기
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-4 text-gray-600">이 도메인에 대한 파이프라인 정보가 없습니다</div>
-              )}
-            </div>
-          )}
         </div>
       )}
     </div>

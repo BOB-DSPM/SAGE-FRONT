@@ -1,6 +1,6 @@
 // src/pages/ThreatCompliance.js
 import React, { useState, useEffect } from 'react';
-import { ClipboardList, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldAlert, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { sessionService } from '../services/sessionService';
 import { complianceApi } from '../services/complianceApi';
 
@@ -212,7 +212,7 @@ const ThreatCompliance = () => {
       `}</style>
 
       <div className="flex items-center gap-3">
-        <ClipboardList className="w-8 h-8 text-primary-500" />
+        <ShieldAlert className="w-8 h-8 text-primary-500" />
         <h1 className="text-3xl font-bold text-gray-900">Threat Compliance</h1>
       </div>
 
