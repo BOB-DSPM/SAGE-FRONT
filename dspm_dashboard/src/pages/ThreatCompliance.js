@@ -41,7 +41,11 @@ const ThreatCompliance = () => {
     try {
       const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
       const data = await response.json();
-      setRequirements(data);
+      console.log("Fetched requirements:", data); // 👈 실제 응답 형태 확인
+
+      // ✅ 배열인지 체크 후 설정
+      setRequirements(Array.isArray(data) ? data : (data.results || []));
+      
       setSelectedFramework(frameworkCode);
       setSidePanelOpen(false);
       setMappingDetail(null);
@@ -53,6 +57,7 @@ const ThreatCompliance = () => {
       setLoading(false);
     }
   };
+
 
   const fetchMappingDetail = async (frameworkCode, reqId) => {
     setLoading(true);
