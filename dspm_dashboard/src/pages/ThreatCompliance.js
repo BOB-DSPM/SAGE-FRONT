@@ -317,13 +317,19 @@ const ThreatCompliance = () => {
                         <div
                           className="line-clamp-2 cursor-pointer hover:text-blue-600"
                           onClick={() => {
-                            const frameworks = req.applicable_hits
-                              ?.flatMap(hit => hit.matches?.map(m => m.framework_code?.toUpperCase()) || [])
-                              .filter((v, i, arr) => v && arr.indexOf(v) === i)
-                              .join(', ') || '-';
+                            const complianceData = req.applicable_hits?.map(hit => ({
+                              frameworks: hit.matches?.map(m => ({
+                                code: m.framework_code?.toUpperCase(),
+                                itemCode: m.item_code,
+                                title: m.title,
+                                regulation: m.regulation
+                              })) || []
+                            })) || [];
+                            
                             setExpandedText({ 
                               title: '컴플라이언스', 
-                              content: frameworks
+                              content: complianceData,
+                              isTable: true
                             });
                           }}
                         >
@@ -435,7 +441,7 @@ const ThreatCompliance = () => {
           onClick={() => setExpandedText(null)}
         >
           <div 
-            className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-auto m-4"
+            className="bg-white rounded-lg p-6 max-w-5xl w-full max-h-[80vh] overflow-auto m-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-start mb-4">
@@ -447,9 +453,49 @@ const ThreatCompliance = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
-              {expandedText.content || '-'}
-            </div>
+            
+            {expandedText.isTable ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 border">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        프레임워크
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        항목 코드
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        상세 내용
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {expandedText.content?.flatMap(item => 
+                      item.frameworks?.map((fw, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {fw.code || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {fw.itemCode || fw.title || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            <div className="max-w-2xl line-clamp-3">
+                              {fw.regulation || '-'}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
+                {expandedText.content || '-'}
+              </div>
+            )}
           </div>
         </div>
       )}
