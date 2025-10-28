@@ -316,12 +316,21 @@ const ThreatCompliance = () => {
                       <td className="px-6 py-4 text-sm text-gray-700">
                         <div
                           className="line-clamp-2 cursor-pointer hover:text-blue-600"
-                          onClick={() => setExpandedText({ 
-                            title: '컴플라이언스', 
-                            content: req.applicable_compliance?.replace(/;$/, '').replace(/;/g, ', ') || '-'
-                          })}
+                          onClick={() => {
+                            const frameworks = req.applicable_hits
+                              ?.flatMap(hit => hit.matches?.map(m => m.framework_code?.toUpperCase()) || [])
+                              .filter((v, i, arr) => v && arr.indexOf(v) === i)
+                              .join(', ') || '-';
+                            setExpandedText({ 
+                              title: '컴플라이언스', 
+                              content: frameworks
+                            });
+                          }}
                         >
-                          {req.applicable_compliance?.replace(/;$/, '').replace(/;/g, ', ') || '-'}
+                          {req.applicable_hits
+                            ?.flatMap(hit => hit.matches?.map(m => m.framework_code?.toUpperCase()) || [])
+                            .filter((v, i, arr) => v && arr.indexOf(v) === i)
+                            .join(', ') || '-'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -487,7 +496,16 @@ const ThreatCompliance = () => {
                           </div>
                           <div>
                             <dt className="text-xs text-gray-500">컴플라이언스</dt>
-                            <dd className="text-sm text-gray-900">{mappingDetail.requirement.applicable_compliance?.replace(/;$/, '').replace(/;/g, ', ') || '-'}</dd>
+                            <dd className="text-sm text-gray-900">
+                              {mappingDetail.requirement.applicable_hits
+                                ?.flatMap(hit => 
+                                  hit.matches?.map(m => 
+                                    `${m.framework_code?.toUpperCase()} (${m.item_code})`
+                                  ) || []
+                                )
+                                .filter(v => v)
+                                .join(', ') || '-'}
+                            </dd>
                           </div>
                         </dl>
                       </div>
