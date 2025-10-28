@@ -267,7 +267,7 @@ const Policies2 = () => {
 
       <div className="flex items-center gap-3">
         <ClipboardList className="w-8 h-8 text-primary-500" />
-        <h1 className="text-3xl font-bold text-gray-900">Compliance Policies</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Compliance</h1>
       </div>
 
       <div className="flex items-center gap-2 text-sm text-gray-600 py-2 px-2">

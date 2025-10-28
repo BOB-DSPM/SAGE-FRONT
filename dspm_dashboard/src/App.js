@@ -21,8 +21,16 @@ const tabs = [
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
   { id: 'data-target', name: 'Data Collector', icon: FolderSearch },
   { id: 'lineage', name: 'Lineage', icon: GitBranch },
-  { id: 'policies2', name: 'Compliance', icon: ClipboardList },
-  { id: 'threat-compliance', name: 'Threat', icon: ShieldAlert },
+  // 아코디언 메뉴
+  { 
+    id: 'audit', 
+    name: 'Audit', 
+    icon: ClipboardList,
+    children: [
+      { id: 'policies2', name: 'Compliance', icon: ClipboardList },
+      { id: 'threat-compliance', name: 'Threat', icon: ShieldAlert },
+    ]
+  },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
   { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 ];
