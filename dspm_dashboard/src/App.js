@@ -21,10 +21,10 @@ const tabs = [
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
   { id: 'data-target', name: 'Data Collector', icon: FolderSearch },
   { id: 'lineage', name: 'Lineage', icon: GitBranch },
-  { id: 'policies', name: 'Compliance Status', icon: BarChart3 },
-  { id: 'policies2', name: 'Policies', icon: ClipboardList },
-  { id: 'threat-compliance', name: 'Threat Compliance', icon: ShieldAlert },
+  { id: 'policies2', name: 'Compliance', icon: ClipboardList },
+  { id: 'threat-compliance', name: 'Threat', icon: ShieldAlert },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
+  { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 ];
 
 const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
