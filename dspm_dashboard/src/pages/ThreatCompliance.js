@@ -262,10 +262,13 @@ const ThreatCompliance = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12"></th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    순서
+                  </th>
                   <th className="id-column px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px', maxWidth: '400px' }}>보안 위협</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '150px', maxWidth: '250px' }}>보안 위협</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">세부 사항</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">준수 여부</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">컴플라이언스</th>
@@ -273,7 +276,7 @@ const ThreatCompliance = () => {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {requirements.map((req) => (
+                {requirements.map((req, index) => (
                   <React.Fragment key={req.id}>
                     <tr className="hover:bg-gray-50 border-b border-gray-200">
                       <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -293,8 +296,11 @@ const ThreatCompliance = () => {
                           </button>
                         )}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                        {index + 1}
+                      </td>
                       <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
-                      <td className="px-6 py-2 text-sm text-gray-900" style={{ minWidth: '300px', maxWidth: '400px' }}>
+                      <td className="px-6 py-2 text-sm text-gray-900" style={{ minWidth: '150px', maxWidth: '250px' }}>
                         <span 
                           className="line-clamp-2 block cursor-pointer hover:text-blue-600 transition-colors" 
                           onClick={() => setExpandedText({ title: '보안 위협', content: req.item_code })}
@@ -364,7 +370,7 @@ const ThreatCompliance = () => {
 
                     {expandedItems[`req-${req.id}`] && req.audit_result && (
                       <tr className="bg-gray-50">
-                        <td colSpan="7" className="px-6 py-4">
+                        <td colSpan="8" className="px-6 py-4">
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <h4 className="text-sm font-semibold text-gray-700">진단 결과 상세</h4>
