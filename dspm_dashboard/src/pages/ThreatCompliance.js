@@ -20,6 +20,8 @@ const ThreatCompliance = () => {
   const [streaming, setStreaming] = useState(false);
   const [progress, setProgress] = useState({ total: 0, executed: 0 });
   const [expandedText, setExpandedText] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
   useEffect(() => {
     const initSession = async () => {
@@ -47,6 +49,7 @@ const ThreatCompliance = () => {
       setMappingDetail(null);
       setAuditResults({});
       setExpandedItems({});
+      setCurrentPage(1);
     } catch (err) {
       console.error('요구사항 조회 실패:', err);
     } finally {
@@ -268,7 +271,7 @@ const ThreatCompliance = () => {
                   <th className="id-column px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '150px', maxWidth: '250px' }}>보안 위협</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px', maxWidth: '400px' }}>보안 위협</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">세부 사항</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">준수 여부</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">컴플라이언스</th>
@@ -276,7 +279,9 @@ const ThreatCompliance = () => {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {requirements.map((req, index) => (
+                {requirements
+                  .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                  .map((req, index) => (
                   <React.Fragment key={req.id}>
                     <tr className="hover:bg-gray-50 border-b border-gray-200">
                       <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -297,10 +302,10 @@ const ThreatCompliance = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        {index + 1}
+                        {(currentPage - 1) * itemsPerPage + index + 1}
                       </td>
                       <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
-                      <td className="px-6 py-2 text-sm text-gray-900" style={{ minWidth: '150px', maxWidth: '250px' }}>
+                      <td className="px-6 py-2 text-sm text-gray-900" style={{ minWidth: '300px', maxWidth: '400px' }}>
                         <span 
                           className="line-clamp-2 block cursor-pointer hover:text-blue-600 transition-colors" 
                           onClick={() => setExpandedText({ title: '보안 위협', content: req.item_code })}
@@ -437,6 +442,57 @@ const ThreatCompliance = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              {requirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, requirements.length)}-{Math.min(currentPage * itemsPerPage, requirements.length)} 표시
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                이전
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.ceil(requirements.length / itemsPerPage) }, (_, i) => i + 1)
+                  .filter(page => {
+                    const totalPages = Math.ceil(requirements.length / itemsPerPage);
+                    if (totalPages <= 7) return true;
+                    if (page === 1 || page === totalPages) return true;
+                    if (page >= currentPage - 1 && page <= currentPage + 1) return true;
+                    if (page === currentPage - 2 || page === currentPage + 2) return page;
+                    return false;
+                  })
+                  .map((page, idx, array) => (
+                    <React.Fragment key={page}>
+                      {idx > 0 && array[idx - 1] !== page - 1 && (
+                        <span className="px-2 text-gray-500">...</span>
+                      )}
+                      <button
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1 rounded ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white'
+                            : 'border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    </React.Fragment>
+                  ))}
+              </div>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(requirements.length / itemsPerPage), prev + 1))}
+                disabled={currentPage === Math.ceil(requirements.length / itemsPerPage)}
+                className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                다음
+              </button>
+            </div>
           </div>
         </div>
       )}
