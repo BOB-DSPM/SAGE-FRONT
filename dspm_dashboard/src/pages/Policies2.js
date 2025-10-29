@@ -31,7 +31,7 @@ const Policies2 = () => {
   const [progress, setProgress] = useState({ total: 0, executed: 0 });
   const [expandedText, setExpandedText] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage] = useState(20);
 
   const frameworkLogos = {
     GDPR: gdprLogo,
@@ -386,6 +386,7 @@ const Policies2 = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px', maxWidth: '400px' }}>항목 코드</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">세부 사항</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">매핑 상태</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">위협</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">액션</th>
                 </tr>
               </thead>
@@ -431,6 +432,9 @@ const Policies2 = () => {
                           </span>
                         </div>
                       </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        <span className="text-gray-500">{req.threat_description || "-"}</span>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">{getMappingStatusBadge(req.mapping_status)}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-4">
@@ -457,61 +461,113 @@ const Policies2 = () => {
 
                     {expandedItems[`req-${req.id}`] && req.audit_result && (
                       <tr className="bg-gray-50">
-                        <td colSpan="6" className="px-6 py-4">
+                        <td colSpan="7" className="px-6 py-4">
                           <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-sm font-semibold text-gray-700">진단 결과 상세</h4>
-                              {req.audit_result.summary && (
-                                <div className="flex items-center gap-3 text-xs">
-                                  <span className="text-blue-600">준수: {req.audit_result.summary.COMPLIANT || 0}</span>
-                                  <span className="text-red-600">미준수: {req.audit_result.summary.NON_COMPLIANT || 0}</span>
-                                  <span className="text-gray-500">건너뜀: {req.audit_result.summary.SKIPPED || 0}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {req.audit_result.results && req.audit_result.results.length > 0 ? (
-                              <div className="space-y-3">
-                                {req.audit_result.results.map((result, idx) => (
-                                  <div key={idx} className="bg-white rounded border border-gray-200 overflow-hidden">
-                                    <div className="bg-gray-100 px-4 py-2 flex items-center justify-between">
-                                      <span className="text-xs font-medium text-gray-700">{result.mapping_code}</span>
-                                      <div className="flex items-center gap-2">
-                                        {getStatusIcon(result.status)}
-                                        <span className="text-xs font-medium">{result.status}</span>
-                                      </div>
-                                    </div>
-
-                                    {result.evaluations && result.evaluations.length > 0 && (
-                                      <div className="p-3 space-y-2">
-                                        {result.evaluations.map((evaluation, evalIdx) => (
-                                          <div key={evalIdx} className="text-xs space-y-1">
-                                            <div className="flex items-start justify-between">
-                                              <div className="flex-1">
-                                                <div className="font-medium text-gray-700">{evaluation.service}</div>
-                                                {evaluation.resource_id && (
-                                                  <div className="text-gray-600">리소스: {evaluation.resource_id}</div>
-                                                )}
-                                                <div className="text-gray-500 mt-1">{evaluation.decision}</div>
-                                              </div>
-                                              {getStatusIcon(evaluation.status)}
-                                            </div>
-
-                                            {evaluation.extra?.error && (
-                                              <div className="text-red-600 text-xs mt-1 p-2 bg-red-50 rounded">
-                                                {evaluation.extra.error}
-                                              </div>
-                                            )}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {result.reason && (
-                                      <div className="px-4 py-2 bg-yellow-50 text-xs text-yellow-800">{result.reason}</div>
-                                    )}
+                            {/* 요약 통계 */}
+                            {req.audit_result.summary && (
+                              <div className="grid grid-cols-3 gap-4">
+                                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                  <div className="text-2xl font-bold text-green-600">
+                                    {req.audit_result.summary.COMPLIANT || 0}
                                   </div>
-                                ))}
+                                  <div className="text-xs text-gray-600">준수</div>
+                                </div>
+                                <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                                  <div className="text-2xl font-bold text-red-600">
+                                    {req.audit_result.summary.NON_COMPLIANT || 0}
+                                  </div>
+                                  <div className="text-xs text-gray-600">미준수</div>
+                                </div>
+                                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                  <div className="text-2xl font-bold text-yellow-600">
+                                    {req.audit_result.summary.SKIPPED || 0}
+                                  </div>
+                                  <div className="text-xs text-gray-600">건너뜀</div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 진단 결과 아코디언 */}
+                            {req.audit_result.results && req.audit_result.results.length > 0 ? (
+                              <div className="space-y-2">
+                                {req.audit_result.results.map((result, idx) => {
+                                  const isResultExpanded = expandedItems[`result-${req.id}-${idx}`];
+                                  const borderColor = 
+                                    result.status === 'COMPLIANT' ? 'border-green-500' :
+                                    result.status === 'NON_COMPLIANT' ? 'border-red-500' :
+                                    result.status === 'SKIPPED' ? 'border-yellow-500' : 'border-gray-500';
+                                  const statusBadge =
+                                    result.status === 'COMPLIANT' ? 'bg-green-100 text-green-800' :
+                                    result.status === 'NON_COMPLIANT' ? 'bg-red-100 text-red-800' :
+                                    result.status === 'SKIPPED' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800';
+
+                                  return (
+                                    <div key={idx} className={`border-l-4 ${borderColor} bg-white rounded-r-lg shadow-sm overflow-hidden`}>
+                                      <button
+                                        onClick={() => toggleExpand(`result-${req.id}-${idx}`)}
+                                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                      >
+                                        <div className="flex items-center gap-4">
+                                          <span className="font-bold text-gray-900">{result.mapping_code}</span>
+                                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge}`}>
+                                            {result.status}
+                                          </span>
+                                          {result.evaluations && result.evaluations.length > 0 && (
+                                            <span className="text-sm text-gray-600">
+                                              {result.evaluations.length}개 리소스 확인
+                                            </span>
+                                          )}
+                                        </div>
+                                        {isResultExpanded ? (
+                                          <ChevronUp className="w-5 h-5 text-gray-400" />
+                                        ) : (
+                                          <ChevronDown className="w-5 h-5 text-gray-400" />
+                                        )}
+                                      </button>
+
+                                      {isResultExpanded && (
+                                        <div className="border-t border-gray-200">
+                                          {result.evaluations && result.evaluations.length > 0 ? (
+                                            <div className="p-4 space-y-2">
+                                              {result.evaluations.map((evaluation, evalIdx) => {
+                                                const evalBgColor = 
+                                                  evaluation.status === 'COMPLIANT' ? 'bg-green-50' :
+                                                  evaluation.status === 'NON_COMPLIANT' ? 'bg-red-50' :
+                                                  'bg-gray-50';
+                                                
+                                                return (
+                                                  <div key={evalIdx} className={`flex items-center justify-between p-3 ${evalBgColor} rounded`}>
+                                                    <div className="flex-1">
+                                                      <div className="text-sm font-medium text-gray-900">
+                                                        {evaluation.service}
+                                                        {evaluation.resource_id && `: ${evaluation.resource_id}`}
+                                                      </div>
+                                                      <div className="text-xs text-gray-600 mt-1">{evaluation.decision}</div>
+                                                      {evaluation.extra?.error && (
+                                                        <div className="text-xs text-red-600 mt-1 p-2 bg-red-100 rounded">
+                                                          {evaluation.extra.error}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    {getStatusIcon(evaluation.status)}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          ) : result.reason ? (
+                                            <div className="p-4 bg-yellow-50 text-sm text-yellow-800">
+                                              {result.reason}
+                                            </div>
+                                          ) : (
+                                            <div className="p-4 text-sm text-gray-500">
+                                              상세 정보 없음
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <p className="text-sm text-gray-500">진단 결과가 없습니다.</p>

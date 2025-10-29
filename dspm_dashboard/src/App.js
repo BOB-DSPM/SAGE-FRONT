@@ -28,7 +28,7 @@ const tabs = [
     icon: ClipboardList,
     children: [
       { id: 'policies2', name: 'Compliance', icon: ClipboardList },
-      { id: 'threat-compliance', name: 'Threat', icon: ShieldAlert },
+      { id: 'threat-compliance', name: 'Threats', icon: ShieldAlert },
     ]
   },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
