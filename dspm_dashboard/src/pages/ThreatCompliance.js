@@ -173,6 +173,14 @@ const ThreatCompliance = () => {
     );
   };
 
+  const getStatusText = (status) => {
+    if (status === 'COMPLIANT' || status === 'Compliant') return '준수';
+    if (status === 'NON_COMPLIANT' || status === 'Non-Compliant') return '미준수';
+    if (status === 'SKIPPED' || status === 'Skipped') return '건너뜀';
+    if (status === 'ERROR') return '오류';
+    return status;
+  };
+
   const getStatusIcon = (status) => {
     if (status === 'COMPLIANT') return <CheckCircle className="w-4 h-4 text-blue-600" />;
     if (status === 'NON_COMPLIANT') return <XCircle className="w-4 h-4 text-red-600" />;
@@ -299,7 +307,7 @@ const ThreatCompliance = () => {
                           </button>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium text-center" style={{ width: '60px' }}>
+                      <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 text-center font-medium" style={{ width: '60px' }}>
                         {(currentPage - 1) * itemsPerPage + index + 1}
                       </td>
                       <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
@@ -420,7 +428,7 @@ const ThreatCompliance = () => {
                                         <div className="flex items-center gap-4">
                                           <span className="font-bold text-gray-900">{result.mapping_code}</span>
                                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge}`}>
-                                            {result.status}
+                                            {getStatusText(result.status)}
                                           </span>
                                           {result.evaluations && result.evaluations.length > 0 && (
                                             <span className="text-sm text-gray-600">
