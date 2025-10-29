@@ -271,7 +271,7 @@ const ThreatCompliance = () => {
                   <th className="id-column px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px', maxWidth: '400px' }}>보안 위협</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '150px', maxWidth: '250px' }}>보안 위협</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">세부 사항</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">준수 여부</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">컴플라이언스</th>
@@ -305,7 +305,7 @@ const ThreatCompliance = () => {
                         {(currentPage - 1) * itemsPerPage + index + 1}
                       </td>
                       <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
-                      <td className="px-6 py-2 text-sm text-gray-900" style={{ minWidth: '300px', maxWidth: '400px' }}>
+                      <td className="px-6 py-2 text-sm text-gray-900" style={{ minWidth: '150px', maxWidth: '250px' }}>
                         <span 
                           className="line-clamp-2 block cursor-pointer hover:text-blue-600 transition-colors" 
                           onClick={() => setExpandedText({ title: '보안 위협', content: req.item_code })}
