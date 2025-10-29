@@ -31,7 +31,7 @@ const Policies2 = () => {
   const [progress, setProgress] = useState({ total: 0, executed: 0 });
   const [expandedText, setExpandedText] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(20);
+  const [itemsPerPage] = useState(10);
 
   const frameworkLogos = {
     GDPR: gdprLogo,
@@ -80,7 +80,9 @@ const Policies2 = () => {
       const response = await fetch(`${API_BASE}/compliance/stats`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
-      setFrameworks(data);
+      // SAGE-Threat 제외
+      const filteredData = data.filter(fw => fw.framework !== 'SAGE-Threat');
+      setFrameworks(filteredData);
     } catch (err) {
       console.error('프레임워크 조회 실패:', err);
       setError(err.message);
@@ -379,15 +381,16 @@ const Policies2 = () => {
             <table className="w-full requirements-table">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12"></th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '40px' }}></th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '60px' }}>No</th>
                   <th className="id-column px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px', maxWidth: '400px' }}>항목 코드</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">세부 사항</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">매핑 상태</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">위협</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">액션</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px' }}>항목 코드</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '350px' }}>세부 사항</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '100px' }}>매핑 상태</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px' }}>위협</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '180px' }}>액션</th>
                 </tr>
               </thead>
               <tbody className="bg-white">
@@ -396,7 +399,7 @@ const Policies2 = () => {
                   .map((req, index) => (
                   <React.Fragment key={req.id}>
                     <tr className="hover:bg-gray-50 border-b border-gray-200">
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900" style={{ width: '40px' }}>
                         {req.audit_result && (
                           <button
                             onClick={(e) => {
@@ -413,8 +416,11 @@ const Policies2 = () => {
                           </button>
                         )}
                       </td>
+                      <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 text-center font-medium" style={{ width: '60px' }}>
+                        {(currentPage - 1) * itemsPerPage + index + 1}
+                      </td>
                       <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
-                      <td className="px-6 py-2 text-sm text-gray-900" style={{ minWidth: '300px', maxWidth: '400px' }}>
+                      <td className="px-6 py-2 text-sm text-gray-900" style={{ width: '200px' }}>
                         <span 
                           className="line-clamp-2 block cursor-pointer hover:text-blue-600 transition-colors" 
                           onClick={() => setExpandedText({ title: '항목 코드', content: req.item_code })}
@@ -422,21 +428,41 @@ const Policies2 = () => {
                           {req.item_code || '-'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <div className="max-w-2xl">
-                          <span 
-                            className="line-clamp-3 block cursor-pointer hover:text-blue-600 transition-colors" 
-                            onClick={() => setExpandedText({ title: '세부 사항', content: req.regulation || req.title })}
+                      <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '350px' }}>
+                        <span 
+                          className="line-clamp-3 block cursor-pointer hover:text-blue-600 transition-colors" 
+                          onClick={() => setExpandedText({ title: '세부 사항', content: req.regulation || req.title })}
+                        >
+                          {req.regulation || req.title || '-'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ width: '100px' }}>{getMappingStatusBadge(req.mapping_status)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900" style={{ width: '200px' }}>
+                        {req.threat_hits && req.threat_hits.length > 0 ? (
+                          <div 
+                            className="space-y-1 cursor-pointer hover:text-blue-600 transition-colors"
+                            onClick={() => setExpandedText({ 
+                              title: '관련 위협', 
+                              content: req.threat_hits,
+                              isTable: true 
+                            })}
                           >
-                            {req.regulation || req.title || '-'}
-                          </span>
-                        </div>
+                            {req.threat_hits.slice(0, 2).map((threat, idx) => (
+                              <div key={idx} className="text-xs text-gray-700">
+                                • {threat.item_code || threat.title}
+                              </div>
+                            ))}
+                            {req.threat_hits.length > 2 && (
+                              <div className="text-xs text-gray-500">
+                                +{req.threat_hits.length - 2}개 더
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <span className="text-gray-500">{req.threat_description || "-"}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">{getMappingStatusBadge(req.mapping_status)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ width: '180px' }}>
                         <div className="flex items-center gap-4">
                           <button
                             onClick={() => fetchMappingDetail(selectedFramework, req.id)}
@@ -461,7 +487,7 @@ const Policies2 = () => {
 
                     {expandedItems[`req-${req.id}`] && req.audit_result && (
                       <tr className="bg-gray-50">
-                        <td colSpan="7" className="px-6 py-4">
+                        <td colSpan="8" className="px-6 py-4">
                           <div className="space-y-4">
                             {/* 요약 통계 */}
                             {req.audit_result.summary && (
@@ -653,8 +679,28 @@ const Policies2 = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
-              {expandedText.content || '-'}
+            <div className="text-sm text-gray-900 leading-relaxed">
+              {expandedText.isTable && Array.isArray(expandedText.content) ? (
+                <div className="space-y-2">
+                  {expandedText.content.map((item, idx) => (
+                    <div key={idx} className="p-3 bg-gray-50 rounded border border-gray-200">
+                      <div className="font-medium text-gray-900 mb-1">
+                        {item.item_code || item.title || `항목 ${idx + 1}`}
+                      </div>
+                      {item.title && item.title !== item.item_code && (
+                        <div className="text-sm text-gray-700">{item.title}</div>
+                      )}
+                      {item.regulation && (
+                        <div className="text-xs text-gray-600 mt-1">{item.regulation}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap">
+                  {expandedText.content || '-'}
+                </div>
+              )}
             </div>
           </div>
         </div>
