@@ -22,6 +22,8 @@ const ThreatCompliance = () => {
   const [expandedText, setExpandedText] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [selectedThreatGroup, setSelectedThreatGroup] = useState('전체');
+  const [threatGroups, setThreatGroups] = useState([]);
 
   useEffect(() => {
     const initSession = async () => {
@@ -51,17 +53,43 @@ const ThreatCompliance = () => {
       
       if (Array.isArray(data)) {
         setRequirements(data);
+        
+        // 위협 그룹 추출 및 중복 제거
+        const groups = new Set();
+        data.forEach(req => {
+          if (req.threat_groups && Array.isArray(req.threat_groups)) {
+            req.threat_groups.forEach(group => {
+              if (group) groups.add(group);
+            });
+          }
+        });
+        setThreatGroups(['전체', ...Array.from(groups).sort()]);
+        
       } else if (data && typeof data === 'object') {
         // 객체인 경우 values로 변환 시도
         console.warn('응답이 배열이 아닙니다. 객체를 배열로 변환합니다.');
-        setRequirements(Object.values(data));
+        const arrayData = Object.values(data);
+        setRequirements(arrayData);
+        
+        // 위협 그룹 추출
+        const groups = new Set();
+        arrayData.forEach(req => {
+          if (req.threat_groups && Array.isArray(req.threat_groups)) {
+            req.threat_groups.forEach(group => {
+              if (group) groups.add(group);
+            });
+          }
+        });
+        setThreatGroups(['전체', ...Array.from(groups).sort()]);
       } else {
         console.error('예상치 못한 응답 형식:', data);
         setRequirements([]);
+        setThreatGroups(['전체']);
         setError('잘못된 데이터 형식입니다.');
       }
       
       setSelectedFramework(frameworkCode);
+      setSelectedThreatGroup('전체');
       setSidePanelOpen(false);
       setMappingDetail(null);
       setAuditResults({});
@@ -70,7 +98,8 @@ const ThreatCompliance = () => {
     } catch (err) {
       console.error('요구사항 조회 실패:', err);
       setError(err.message);
-      setRequirements([]); // 에러 시 빈 배열로 설정
+      setRequirements([]);
+      setThreatGroups(['전체']);
     } finally {
       setLoading(false);
     }
@@ -224,6 +253,13 @@ const ThreatCompliance = () => {
   // 안전한 requirements 배열 사용
   const safeRequirements = Array.isArray(requirements) ? requirements : [];
 
+  // 위협 그룹 필터링
+  const filteredRequirements = selectedThreatGroup === '전체' 
+    ? safeRequirements 
+    : safeRequirements.filter(req => 
+        req.threat_groups && req.threat_groups.includes(selectedThreatGroup)
+      );
+
   return (
     <div className="relative">
       <style>{`
@@ -276,10 +312,10 @@ const ThreatCompliance = () => {
       {selectedFramework && !loading && safeRequirements.length > 0 && (
         <div className={`bg-white rounded-lg shadow-sm border transition-all ${sidePanelOpen ? 'mr-[50%]' : ''}`}>
           <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">{selectedFramework} Requirements</h2>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">{safeRequirements.length} 항목</span>
+                <span className="text-sm text-gray-500">{filteredRequirements.length} 항목</span>
                 <div className="flex items-center gap-3">
                   {streaming && (
                     <span className="text-xs text-gray-500">
@@ -296,6 +332,33 @@ const ThreatCompliance = () => {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* 위협 그룹 필터 */}
+            <div className="flex flex-wrap gap-2">
+              {threatGroups.map(group => (
+                <button
+                  key={group}
+                  onClick={() => {
+                    setSelectedThreatGroup(group);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedThreatGroup === group
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {group}
+                  {group !== '전체' && (
+                    <span className="ml-2 text-xs opacity-75">
+                      ({safeRequirements.filter(req => 
+                        req.threat_groups && req.threat_groups.includes(group)
+                      ).length})
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
           
@@ -318,7 +381,7 @@ const ThreatCompliance = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {safeRequirements
+                    {filteredRequirements
                       .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                       .map((req, index) => (
                       <React.Fragment key={req.id}>
@@ -536,7 +599,7 @@ const ThreatCompliance = () => {
               {/* Pagination */}
               <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                 <div className="text-sm text-gray-700">
-                  {safeRequirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, safeRequirements.length)}-{Math.min(currentPage * itemsPerPage, safeRequirements.length)} 표시
+                  {filteredRequirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, filteredRequirements.length)}-{Math.min(currentPage * itemsPerPage, filteredRequirements.length)} 표시
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -547,9 +610,9 @@ const ThreatCompliance = () => {
                     이전
                   </button>
                   <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.ceil(safeRequirements.length / itemsPerPage) }, (_, i) => i + 1)
+                    {Array.from({ length: Math.ceil(filteredRequirements.length / itemsPerPage) }, (_, i) => i + 1)
                       .filter(page => {
-                        const totalPages = Math.ceil(safeRequirements.length / itemsPerPage);
+                        const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage);
                         if (totalPages <= 7) return true;
                         if (page === 1 || page === totalPages) return true;
                         if (page >= currentPage - 1 && page <= currentPage + 1) return true;
@@ -575,8 +638,8 @@ const ThreatCompliance = () => {
                       ))}
                   </div>
                   <button
-                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(safeRequirements.length / itemsPerPage), prev + 1))}
-                    disabled={currentPage === Math.ceil(safeRequirements.length / itemsPerPage)}
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredRequirements.length / itemsPerPage), prev + 1))}
+                    disabled={currentPage === Math.ceil(filteredRequirements.length / itemsPerPage)}
                     className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     다음
