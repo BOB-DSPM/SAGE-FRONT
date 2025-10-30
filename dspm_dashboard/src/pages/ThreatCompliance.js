@@ -43,7 +43,24 @@ const ThreatCompliance = () => {
     try {
       const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
       const data = await response.json();
-      setRequirements(data);
+      
+      // 배열 검증 추가
+      console.log('API 응답 타입:', typeof data);
+      console.log('API 응답 값:', data);
+      console.log('배열인가?:', Array.isArray(data));
+      
+      if (Array.isArray(data)) {
+        setRequirements(data);
+      } else if (data && typeof data === 'object') {
+        // 객체인 경우 values로 변환 시도
+        console.warn('응답이 배열이 아닙니다. 객체를 배열로 변환합니다.');
+        setRequirements(Object.values(data));
+      } else {
+        console.error('예상치 못한 응답 형식:', data);
+        setRequirements([]);
+        setError('잘못된 데이터 형식입니다.');
+      }
+      
       setSelectedFramework(frameworkCode);
       setSidePanelOpen(false);
       setMappingDetail(null);
@@ -52,6 +69,8 @@ const ThreatCompliance = () => {
       setCurrentPage(1);
     } catch (err) {
       console.error('요구사항 조회 실패:', err);
+      setError(err.message);
+      setRequirements([]); // 에러 시 빈 배열로 설정
     } finally {
       setLoading(false);
     }
@@ -202,6 +221,9 @@ const ThreatCompliance = () => {
     setExpandedItems({});
   };
 
+  // 안전한 requirements 배열 사용
+  const safeRequirements = Array.isArray(requirements) ? requirements : [];
+
   return (
     <div className="relative">
       <style>{`
@@ -243,13 +265,21 @@ const ThreatCompliance = () => {
         </div>
       )}
 
-      {selectedFramework && !loading && (
+      {selectedFramework && !loading && safeRequirements.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-24">
+          <ClipboardList className="w-24 h-24 text-gray-300 mb-6" />
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">프레임워크 데이터가 없습니다.</h3>
+          <p className="text-gray-500">API 연결 상태를 확인해주세요.</p>
+        </div>
+      )}
+
+      {selectedFramework && !loading && safeRequirements.length > 0 && (
         <div className={`bg-white rounded-lg shadow-sm border transition-all ${sidePanelOpen ? 'mr-[50%]' : ''}`}>
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-gray-900">{selectedFramework} Requirements</h2>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">{requirements.length} 항목</span>
+                <span className="text-sm text-gray-500">{safeRequirements.length} 항목</span>
                 <div className="flex items-center gap-3">
                   {streaming && (
                     <span className="text-xs text-gray-500">
@@ -268,287 +298,292 @@ const ThreatCompliance = () => {
               </div>
             </div>
           </div>
+          
           <div className="overflow-x-auto">
-            <table className="w-full requirements-table">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '40px' }}></th>
-                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '60px' }}>No</th>
-                  <th className="id-column px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px' }}>보안 위협</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '350px' }}>세부 사항</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '100px' }}>준수 여부</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px' }}>컴플라이언스</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '180px' }}>액션</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white">
-                {requirements
-                  .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-                  .map((req, index) => (
-                  <React.Fragment key={req.id}>
-                    <tr className="hover:bg-gray-50 border-b border-gray-200">
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900" style={{ width: '40px' }}>
-                        {req.audit_result && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleExpand(`req-${req.id}`);
-                            }}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
-                            {expandedItems[`req-${req.id}`] ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 text-center font-medium" style={{ width: '60px' }}>
-                        {(currentPage - 1) * itemsPerPage + index + 1}
-                      </td>
-                      <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
-                      <td className="px-6 py-2 text-sm text-gray-900" style={{ width: '200px' }}>
-                        <span 
-                          className="line-clamp-2 block cursor-pointer hover:text-blue-600 transition-colors" 
-                          onClick={() => setExpandedText({ title: '보안 위협', content: req.item_code })}
-                        >
-                          {req.item_code || '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '350px' }}>
-                        <span 
-                          className="line-clamp-3 block cursor-pointer hover:text-blue-600 transition-colors" 
-                          onClick={() => setExpandedText({ title: '세부 사항', content: req.regulation || req.title })}
-                        >
-                          {req.regulation || req.title || '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ width: '100px' }}>{getMappingStatusBadge(req.mapping_status)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700" style={{ width: '200px' }}>
-                        <div
-                          className="line-clamp-2 cursor-pointer hover:text-blue-600"
-                          onClick={() => {
-                            const complianceData = req.applicable_hits?.map(hit => ({
-                              frameworks: hit.matches?.map(m => ({
-                                code: m.framework_code?.toUpperCase(),
-                                itemCode: m.item_code,
-                                title: m.title,
-                                regulation: m.regulation
-                              })) || []
-                            })) || [];
-                            
-                            setExpandedText({ 
-                              title: '컴플라이언스', 
-                              content: complianceData,
-                              isTable: true
-                            });
-                          }}
-                        >
-                          {req.applicable_hits
-                            ?.flatMap(hit => hit.matches?.map(m => m.framework_code?.toUpperCase()) || [])
-                            .filter((v, i, arr) => v && arr.indexOf(v) === i)
-                            .join(', ') || '-'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ width: '180px' }}>
-                        <div className="flex items-center gap-4">
-                          <button
-                            onClick={() => fetchMappingDetail(selectedFramework, req.id)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            상세보기
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              auditRequirement(selectedFramework, req.id);
-                            }}
-                            disabled={auditing}
-                            className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                          >
-                            <Play className="w-3 h-3" />
-                            진단
-                          </button>
-                        </div>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full requirements-table">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '40px' }}></th>
+                      <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '60px' }}>No</th>
+                      <th className="id-column px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px' }}>보안 위협</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '350px' }}>세부 사항</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '100px' }}>준수 여부</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px' }}>컴플라이언스</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '180px' }}>액션</th>
                     </tr>
-
-                    {expandedItems[`req-${req.id}`] && req.audit_result && (
-                      <tr className="bg-gray-50">
-                        <td colSpan="8" className="px-6 py-4">
-                          <div className="space-y-4">
-                            {/* 요약 통계 */}
-                            {req.audit_result.summary && (
-                              <div className="grid grid-cols-3 gap-4">
-                                <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                  <div className="text-2xl font-bold text-green-600">
-                                    {req.audit_result.summary.COMPLIANT || 0}
-                                  </div>
-                                  <div className="text-xs text-gray-600">준수</div>
-                                </div>
-                                <div className="bg-red-50 p-3 rounded-lg border border-red-200">
-                                  <div className="text-2xl font-bold text-red-600">
-                                    {req.audit_result.summary.NON_COMPLIANT || 0}
-                                  </div>
-                                  <div className="text-xs text-gray-600">미준수</div>
-                                </div>
-                                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                                  <div className="text-2xl font-bold text-yellow-600">
-                                    {req.audit_result.summary.SKIPPED || 0}
-                                  </div>
-                                  <div className="text-xs text-gray-600">건너뜀</div>
-                                </div>
-                              </div>
+                  </thead>
+                  <tbody className="bg-white">
+                    {safeRequirements
+                      .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                      .map((req, index) => (
+                      <React.Fragment key={req.id}>
+                        <tr className="hover:bg-gray-50 border-b border-gray-200">
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900" style={{ width: '40px' }}>
+                            {req.audit_result && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleExpand(`req-${req.id}`);
+                                }}
+                                className="text-gray-400 hover:text-gray-600"
+                              >
+                                {expandedItems[`req-${req.id}`] ? (
+                                  <ChevronUp className="w-4 h-4" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4" />
+                                )}
+                              </button>
                             )}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 text-center font-medium" style={{ width: '60px' }}>
+                            {(currentPage - 1) * itemsPerPage + index + 1}
+                          </td>
+                          <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
+                          <td className="px-6 py-2 text-sm text-gray-900" style={{ width: '200px' }}>
+                            <span 
+                              className="line-clamp-2 block cursor-pointer hover:text-blue-600 transition-colors" 
+                              onClick={() => setExpandedText({ title: '보안 위협', content: req.item_code })}
+                            >
+                              {req.item_code || '-'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '350px' }}>
+                            <span 
+                              className="line-clamp-3 block cursor-pointer hover:text-blue-600 transition-colors" 
+                              onClick={() => setExpandedText({ title: '세부 사항', content: req.regulation || req.title })}
+                            >
+                              {req.regulation || req.title || '-'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap" style={{ width: '100px' }}>{getMappingStatusBadge(req.mapping_status)}</td>
+                          <td className="px-6 py-4 text-sm text-gray-700" style={{ width: '200px' }}>
+                            <div
+                              className="line-clamp-2 cursor-pointer hover:text-blue-600"
+                              onClick={() => {
+                                const complianceData = req.applicable_hits?.map(hit => ({
+                                  frameworks: hit.matches?.map(m => ({
+                                    code: m.framework_code?.toUpperCase(),
+                                    itemCode: m.item_code,
+                                    title: m.title,
+                                    regulation: m.regulation
+                                  })) || []
+                                })) || [];
+                                
+                                setExpandedText({ 
+                                  title: '컴플라이언스', 
+                                  content: complianceData,
+                                  isTable: true
+                                });
+                              }}
+                            >
+                              {req.applicable_hits
+                                ?.flatMap(hit => hit.matches?.map(m => m.framework_code?.toUpperCase()) || [])
+                                .filter((v, i, arr) => v && arr.indexOf(v) === i)
+                                .join(', ') || '-'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ width: '180px' }}>
+                            <div className="flex items-center gap-4">
+                              <button
+                                onClick={() => fetchMappingDetail(selectedFramework, req.id)}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                상세보기
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  auditRequirement(selectedFramework, req.id);
+                                }}
+                                disabled={auditing}
+                                className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                              >
+                                <Play className="w-3 h-3" />
+                                진단
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
 
-                            {/* 진단 결과 아코디언 */}
-                            {req.audit_result.results && req.audit_result.results.length > 0 ? (
-                              <div className="space-y-2">
-                                {req.audit_result.results.map((result, idx) => {
-                                  const isResultExpanded = expandedItems[`result-${req.id}-${idx}`];
-                                  const borderColor = 
-                                    result.status === 'COMPLIANT' ? 'border-green-500' :
-                                    result.status === 'NON_COMPLIANT' ? 'border-red-500' :
-                                    result.status === 'SKIPPED' ? 'border-yellow-500' : 'border-gray-500';
-                                  const statusBadge =
-                                    result.status === 'COMPLIANT' ? 'bg-green-100 text-green-800' :
-                                    result.status === 'NON_COMPLIANT' ? 'bg-red-100 text-red-800' :
-                                    result.status === 'SKIPPED' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800';
-
-                                  return (
-                                    <div key={idx} className={`border-l-4 ${borderColor} bg-white rounded-r-lg shadow-sm overflow-hidden`}>
-                                      <button
-                                        onClick={() => toggleExpand(`result-${req.id}-${idx}`)}
-                                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                                      >
-                                        <div className="flex items-center gap-4">
-                                          <span className="font-bold text-gray-900">{result.mapping_code}</span>
-                                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge}`}>
-                                            {getStatusText(result.status)}
-                                          </span>
-                                          {result.evaluations && result.evaluations.length > 0 && (
-                                            <span className="text-sm text-gray-600">
-                                              {result.evaluations.length}개 리소스 확인
-                                            </span>
-                                          )}
-                                        </div>
-                                        {isResultExpanded ? (
-                                          <ChevronUp className="w-5 h-5 text-gray-400" />
-                                        ) : (
-                                          <ChevronDown className="w-5 h-5 text-gray-400" />
-                                        )}
-                                      </button>
-
-                                      {isResultExpanded && (
-                                        <div className="border-t border-gray-200">
-                                          {result.evaluations && result.evaluations.length > 0 ? (
-                                            <div className="p-4 space-y-2">
-                                              {result.evaluations.map((evaluation, evalIdx) => {
-                                                const evalBgColor = 
-                                                  evaluation.status === 'COMPLIANT' ? 'bg-green-50' :
-                                                  evaluation.status === 'NON_COMPLIANT' ? 'bg-red-50' :
-                                                  'bg-gray-50';
-                                                
-                                                return (
-                                                  <div key={evalIdx} className={`flex items-center justify-between p-3 ${evalBgColor} rounded`}>
-                                                    <div className="flex-1">
-                                                      <div className="text-sm font-medium text-gray-900">
-                                                        {evaluation.service}
-                                                        {evaluation.resource_id && `: ${evaluation.resource_id}`}
-                                                      </div>
-                                                      <div className="text-xs text-gray-600 mt-1">{evaluation.decision}</div>
-                                                      {evaluation.extra?.error && (
-                                                        <div className="text-xs text-red-600 mt-1 p-2 bg-red-100 rounded">
-                                                          {evaluation.extra.error}
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                    {getStatusIcon(evaluation.status)}
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          ) : result.reason ? (
-                                            <div className="p-4 bg-yellow-50 text-sm text-yellow-800">
-                                              {result.reason}
-                                            </div>
-                                          ) : (
-                                            <div className="p-4 text-sm text-gray-500">
-                                              상세 정보 없음
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
+                        {expandedItems[`req-${req.id}`] && req.audit_result && (
+                          <tr className="bg-gray-50">
+                            <td colSpan="8" className="px-6 py-4">
+                              <div className="space-y-4">
+                                {/* 요약 통계 */}
+                                {req.audit_result.summary && (
+                                  <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                      <div className="text-2xl font-bold text-green-600">
+                                        {req.audit_result.summary.COMPLIANT || 0}
+                                      </div>
+                                      <div className="text-xs text-gray-600">준수</div>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-gray-500">진단 결과가 없습니다.</p>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                                    <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                                      <div className="text-2xl font-bold text-red-600">
+                                        {req.audit_result.summary.NON_COMPLIANT || 0}
+                                      </div>
+                                      <div className="text-xs text-gray-600">미준수</div>
+                                    </div>
+                                    <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                      <div className="text-2xl font-bold text-yellow-600">
+                                        {req.audit_result.summary.SKIPPED || 0}
+                                      </div>
+                                      <div className="text-xs text-gray-600">건너뜀</div>
+                                    </div>
+                                  </div>
+                                )}
 
-          {/* Pagination */}
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <div className="text-sm text-gray-700">
-              {requirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, requirements.length)}-{Math.min(currentPage * itemsPerPage, requirements.length)} 표시
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                이전
-              </button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.ceil(requirements.length / itemsPerPage) }, (_, i) => i + 1)
-                  .filter(page => {
-                    const totalPages = Math.ceil(requirements.length / itemsPerPage);
-                    if (totalPages <= 7) return true;
-                    if (page === 1 || page === totalPages) return true;
-                    if (page >= currentPage - 1 && page <= currentPage + 1) return true;
-                    if (page === currentPage - 2 || page === currentPage + 2) return page;
-                    return false;
-                  })
-                  .map((page, idx, array) => (
-                    <React.Fragment key={page}>
-                      {idx > 0 && array[idx - 1] !== page - 1 && (
-                        <span className="px-2 text-gray-500">...</span>
-                      )}
-                      <button
-                        onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-1 rounded ${
-                          currentPage === page
-                            ? 'bg-blue-600 text-white'
-                            : 'border border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    </React.Fragment>
-                  ))}
+                                {/* 진단 결과 아코디언 */}
+                                {req.audit_result.results && req.audit_result.results.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {req.audit_result.results.map((result, idx) => {
+                                      const isResultExpanded = expandedItems[`result-${req.id}-${idx}`];
+                                      const borderColor = 
+                                        result.status === 'COMPLIANT' ? 'border-green-500' :
+                                        result.status === 'NON_COMPLIANT' ? 'border-red-500' :
+                                        result.status === 'SKIPPED' ? 'border-yellow-500' : 'border-gray-500';
+                                      const statusBadge =
+                                        result.status === 'COMPLIANT' ? 'bg-green-100 text-green-800' :
+                                        result.status === 'NON_COMPLIANT' ? 'bg-red-100 text-red-800' :
+                                        result.status === 'SKIPPED' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800';
+
+                                      return (
+                                        <div key={idx} className={`border-l-4 ${borderColor} bg-white rounded-r-lg shadow-sm overflow-hidden`}>
+                                          <button
+                                            onClick={() => toggleExpand(`result-${req.id}-${idx}`)}
+                                            className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                          >
+                                            <div className="flex items-center gap-4">
+                                              <span className="font-bold text-gray-900">{result.mapping_code}</span>
+                                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge}`}>
+                                                {getStatusText(result.status)}
+                                              </span>
+                                              {result.evaluations && result.evaluations.length > 0 && (
+                                                <span className="text-sm text-gray-600">
+                                                  {result.evaluations.length}개 리소스 확인
+                                                </span>
+                                              )}
+                                            </div>
+                                            {isResultExpanded ? (
+                                              <ChevronUp className="w-5 h-5 text-gray-400" />
+                                            ) : (
+                                              <ChevronDown className="w-5 h-5 text-gray-400" />
+                                            )}
+                                          </button>
+
+                                          {isResultExpanded && (
+                                            <div className="border-t border-gray-200">
+                                              {result.evaluations && result.evaluations.length > 0 ? (
+                                                <div className="p-4 space-y-2">
+                                                  {result.evaluations.map((evaluation, evalIdx) => {
+                                                    const evalBgColor = 
+                                                      evaluation.status === 'COMPLIANT' ? 'bg-green-50' :
+                                                      evaluation.status === 'NON_COMPLIANT' ? 'bg-red-50' :
+                                                      'bg-gray-50';
+                                                    
+                                                    return (
+                                                      <div key={evalIdx} className={`flex items-center justify-between p-3 ${evalBgColor} rounded`}>
+                                                        <div className="flex-1">
+                                                          <div className="text-sm font-medium text-gray-900">
+                                                            {evaluation.service}
+                                                            {evaluation.resource_id && `: ${evaluation.resource_id}`}
+                                                          </div>
+                                                          <div className="text-xs text-gray-600 mt-1">{evaluation.decision}</div>
+                                                          {evaluation.extra?.error && (
+                                                            <div className="text-xs text-red-600 mt-1 p-2 bg-red-100 rounded">
+                                                              {evaluation.extra.error}
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                        {getStatusIcon(evaluation.status)}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              ) : result.reason ? (
+                                                <div className="p-4 bg-yellow-50 text-sm text-yellow-800">
+                                                  {result.reason}
+                                                </div>
+                                              ) : (
+                                                <div className="p-4 text-sm text-gray-500">
+                                                  상세 정보 없음
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500">진단 결과가 없습니다.</p>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(requirements.length / itemsPerPage), prev + 1))}
-                disabled={currentPage === Math.ceil(requirements.length / itemsPerPage)}
-                className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                다음
-              </button>
-            </div>
+
+              {/* Pagination */}
+              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                <div className="text-sm text-gray-700">
+                  {safeRequirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, safeRequirements.length)}-{Math.min(currentPage * itemsPerPage, safeRequirements.length)} 표시
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    이전
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.ceil(safeRequirements.length / itemsPerPage) }, (_, i) => i + 1)
+                      .filter(page => {
+                        const totalPages = Math.ceil(safeRequirements.length / itemsPerPage);
+                        if (totalPages <= 7) return true;
+                        if (page === 1 || page === totalPages) return true;
+                        if (page >= currentPage - 1 && page <= currentPage + 1) return true;
+                        if (page === currentPage - 2 || page === currentPage + 2) return page;
+                        return false;
+                      })
+                      .map((page, idx, array) => (
+                        <React.Fragment key={page}>
+                          {idx > 0 && array[idx - 1] !== page - 1 && (
+                            <span className="px-2 text-gray-500">...</span>
+                          )}
+                          <button
+                            onClick={() => setCurrentPage(page)}
+                            className={`px-3 py-1 rounded ${
+                              currentPage === page
+                                ? 'bg-blue-600 text-white'
+                                : 'border border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        </React.Fragment>
+                      ))}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(safeRequirements.length / itemsPerPage), prev + 1))}
+                    disabled={currentPage === Math.ceil(safeRequirements.length / itemsPerPage)}
+                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    다음
+                  </button>
+                </div>
+              </div>
+            </>
           </div>
         </div>
       )}

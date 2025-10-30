@@ -118,12 +118,10 @@ const Lineage = () => {
       border = '2px solid #f59e0b';
     }
 
-    // 선택된 노드: 매우 진한 빨간 테두리 + 그림자
     if (isSelected) {
       border = '4px solid #dc2626';
       boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.3)';
     }
-    // 연결된 노드: 빨간 테두리
     else if (isConnected) {
       border = '3px solid #ef4444';
     }
@@ -170,12 +168,10 @@ const Lineage = () => {
       border = '2px solid #16a34a';
     }
 
-    // 선택된 노드: 매우 진한 빨간 테두리 + 그림자
     if (isSelected) {
       border = '4px solid #dc2626';
       boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.3)';
     }
-    // 연결된 노드: 빨간 테두리
     else if (isConnected) {
       border = '3px solid #ef4444';
     }
@@ -684,8 +680,9 @@ const Lineage = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm">
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* 헤더 영역 - 64px 고정 */}
+      <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm flex-shrink-0">
         <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
         
         <div className="relative mr-4">
@@ -821,7 +818,8 @@ const Lineage = () => {
         )}
       </div>
 
-      <div className="flex-1 relative">
+      {/* 본문 영역 - 남은 공간 차지 */}
+      <div className="flex-1 min-h-0 relative">
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
             <div className="text-center">
@@ -838,20 +836,22 @@ const Lineage = () => {
             </div>
           </div>
         ) : nodes.length > 0 ? (
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={onNodeClick}
-            onPaneClick={onPaneClick}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
-            attributionPosition="bottom-left"
-          >
-            <Background color="#e5e7eb" gap={16} />
-            <Controls />
-          </ReactFlow>
+          <div className="h-full w-full">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={onNodeClick}
+              onPaneClick={onPaneClick}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              attributionPosition="bottom-left"
+            >
+              <Background color="#e5e7eb" gap={16} />
+              <Controls />
+            </ReactFlow>
+          </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
@@ -923,9 +923,10 @@ const Lineage = () => {
         )}
       </div>
 
-      {lineageData?.summary && selectedPipeline && (
-        <div className="p-4 bg-white border-t border-gray-200">
-          <div className="grid grid-cols-4 gap-4">
+      {/* 하단 통계 영역 - 128px 고정 */}
+      {selectedPipeline && lineageData?.summary && (
+        <div className="h-32 p-4 bg-white border-t border-gray-200 flex-shrink-0">
+          <div className="grid grid-cols-4 gap-4 h-full">
             <div className="bg-white rounded-lg p-4 shadow-sm border">
               <p className="text-sm text-gray-600">Overall Status</p>
               <div className="flex items-center gap-2 mt-1">
