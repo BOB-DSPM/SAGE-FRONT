@@ -664,67 +664,65 @@ const ThreatCompliance = () => {
           onClick={() => setExpandedText(null)}
         >
           <div 
-            className="bg-white rounded-lg max-w-6xl w-full max-h-[85vh] overflow-hidden m-4 shadow-2xl"
+            className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-hidden m-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 헤더 */}
-            <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex justify-between items-center">
-              <h3 className="text-xl font-semibold text-white">{expandedText.title}</h3>
+            <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">{expandedText.title}</h3>
               <button 
                 onClick={() => setExpandedText(null)} 
-                className="text-white hover:bg-primary-800 rounded-full p-1 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* 컨텐츠 영역 */}
-            <div className="overflow-y-auto max-h-[calc(85vh-80px)]">
+            <div className="overflow-y-auto max-h-[calc(80vh-80px)] p-6">
               {expandedText.isTable ? (
                 // 컴플라이언스 테이블
-                <div className="p-6">
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              프레임워크
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              항목 코드
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              상세 내용
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {expandedText.content?.flatMap(item => 
-                            item.frameworks?.map((fw, idx) => (
-                              <tr key={idx} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                  {fw.code || '-'}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-700">
-                                  {fw.itemCode || fw.title || '-'}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-600">
-                                  <div className="max-w-2xl">
-                                    {fw.regulation || '-'}
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            프레임워크
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            항목 코드
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            상세 내용
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {expandedText.content?.flatMap(item => 
+                          item.frameworks?.map((fw, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                {fw.code || '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                {fw.itemCode || fw.title || '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                <div className="max-w-2xl">
+                                  {fw.regulation || '-'}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               ) : expandedText.threatData ? (
                 // 보안 위협 상세 정보
-                <div className="p-6 space-y-6">
+                <div className="space-y-6">
                   {/* 보안 위협 정보 */}
                   <div className="bg-primary-50 border border-primary-200 rounded-lg p-5">
                     <h4 className="text-sm font-semibold text-primary-900 mb-3 flex items-center gap-2">
@@ -769,10 +767,8 @@ const ThreatCompliance = () => {
                 </div>
               ) : (
                 // 일반 텍스트
-                <div className="p-6">
-                  <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
-                    {expandedText.content || '-'}
-                  </div>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {expandedText.content || '-'}
                 </div>
               )}
             </div>
