@@ -461,7 +461,7 @@ const ThreatCompliance = () => {
                             <div className="flex items-center gap-4">
                               <button
                                 onClick={() => fetchMappingDetail(selectedFramework, req.id)}
-                                className="text-primary-600 hover:text-primary-800"
+                                className="text-blue-600 hover:text-blue-800"
                               >
                                 상세보기
                               </button>

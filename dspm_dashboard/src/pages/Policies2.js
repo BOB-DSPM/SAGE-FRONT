@@ -430,7 +430,7 @@ const Policies2 = () => {
                       <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
                       <td className="px-6 py-2 text-sm text-gray-900" style={{ width: '200px' }}>
                         <span 
-                          className="line-clamp-2 block cursor-pointer hover:text-blue-600 transition-colors" 
+                          className="line-clamp-2 block cursor-pointer hover:text-primary-600 transition-colors" 
                           onClick={() => setExpandedText({ title: '항목 코드', content: req.item_code })}
                         >
                           {req.item_code || '-'}
@@ -438,7 +438,7 @@ const Policies2 = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '350px' }}>
                         <span 
-                          className="line-clamp-3 block cursor-pointer hover:text-blue-600 transition-colors" 
+                          className="line-clamp-3 block cursor-pointer hover:text-primary-600 transition-colors" 
                           onClick={() => setExpandedText({ title: '세부 사항', content: req.regulation || req.title })}
                         >
                           {req.regulation || req.title || '-'}
