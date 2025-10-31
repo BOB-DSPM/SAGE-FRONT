@@ -43,7 +43,7 @@ const ThreatCompliance = () => {
   const fetchRequirements = async (frameworkCode) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
+      const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements:groups`);
       const data = await response.json();
       
       // 배열 검증 추가
@@ -108,7 +108,7 @@ const ThreatCompliance = () => {
   const fetchMappingDetail = async (frameworkCode, reqId) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements/${reqId}/mappings`);
+      const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements/${reqId}/mappings:groups`);
       const data = await response.json();
       setMappingDetail(data);
       setSidePanelOpen(true);
