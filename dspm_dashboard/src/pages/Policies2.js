@@ -14,7 +14,49 @@ import soc2Logo from './logo/soc2.png';
 import pipaLogo from './logo/pipa.png';
 
 const API_BASE = 'http://211.44.183.248:8003';
-const SESSION_COOKIE_NAME = 'compliance_session_id';
+
+// ============= 세션 키 구분 =============
+const SESSION_KEY_PREFIX = 'compliance_session_';
+const SESSION_KEY_FULL = 'compliance_session_full';
+
+const getSessionKey = (frameworkCode) => {
+  if (!frameworkCode) return SESSION_KEY_FULL;
+  return `${SESSION_KEY_PREFIX}${frameworkCode}`;
+};
+
+const getSessionId = (frameworkCode) => {
+  const key = getSessionKey(frameworkCode);
+  const cookies = document.cookie.split(';');
+  for (let cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === key) {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
+};
+
+const setSessionId = (frameworkCode, sessionId) => {
+  const key = getSessionKey(frameworkCode);
+  const maxAge = 30 * 60; // 30분
+  document.cookie = `${key}=${encodeURIComponent(sessionId)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  console.log(`🍪 세션 ID 저장 [${key}]:`, sessionId);
+};
+
+const clearSessionId = (frameworkCode) => {
+  const key = getSessionKey(frameworkCode);
+  document.cookie = `${key}=; path=/; max-age=0`;
+  console.log(`🗑️ 세션 ID 삭제 [${key}]`);
+};
+
+const generateSessionId = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+// ======================================
 
 const Policies2 = () => {
   const [frameworks, setFrameworks] = useState([]);
@@ -56,37 +98,6 @@ const Policies2 = () => {
     default: null,
   };
 
-  // 세션 관리 헬퍼 함수들
-  const getSessionId = () => {
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-      const [name, value] = cookie.trim().split('=');
-      if (name === SESSION_COOKIE_NAME) {
-        return decodeURIComponent(value);
-      }
-    }
-    return null;
-  };
-
-  const setSessionId = (sessionId) => {
-    const maxAge = 30 * 60; // 30분
-    document.cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionId)}; path=/; max-age=${maxAge}; SameSite=Lax`;
-    console.log('🍪 세션 ID 저장:', sessionId);
-  };
-
-  const clearSessionId = () => {
-    document.cookie = `${SESSION_COOKIE_NAME}=; path=/; max-age=0`;
-    console.log('🗑️ 세션 ID 삭제');
-  };
-
-  const generateSessionId = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
-
   const getFrameworkLogo = (frameworkName) => frameworkLogos[frameworkName] || frameworkLogos.default;
 
   useEffect(() => {
@@ -111,147 +122,189 @@ const Policies2 = () => {
   };
 
   const fetchRequirements = async (frameworkCode) => {
-  setLoading(true);
-  try {
-    const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
-    const data = await response.json();
-    setRequirements(data);
-    setSelectedFramework(frameworkCode);
-    setSidePanelOpen(false);
-    setMappingDetail(null);
-    setAuditResults({});
-    setExpandedItems({});
-    setCurrentPage(1);
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
+      const data = await response.json();
+      setRequirements(data);
+      setSelectedFramework(frameworkCode);
+      setSidePanelOpen(false);
+      setMappingDetail(null);
+      setAuditResults({});
+      setExpandedItems({});
+      setCurrentPage(1);
 
-    // 세션 확인
-    const sessionId = getSessionId();
-    console.log('🔍 세션 ID 확인:', sessionId);
+      // ✅ 1. 전체 진단 세션 확인
+      const fullSessionId = getSessionId(frameworkCode);
+      console.log(`🔍 [전체 진단] 세션 ID 확인:`, fullSessionId);
 
-    if (sessionId) {
-      console.log('✅ 세션 존재 - 세션 유효성 및 프레임워크 포함 여부 확인');
-      try {
-        // 1) 세션 상세 조회
-        const sessionInfo = await complianceApi.checkSession(sessionId);
-        console.log('📋 raw sessionInfo:', sessionInfo);
+      if (fullSessionId) {
+        console.log(`✅ 전체 진단 세션 존재 - 결과 로드 시도`);
+        try {
+          const sessionInfo = await complianceApi.checkSession(fullSessionId);
+          console.log('📋 전체 진단 sessionInfo:', sessionInfo);
 
-        // 2) frameworks 배열을 안전하게 추출 (여러 응답 스키마 처리)
-        // 2) frameworks 배열을 안전하게 추출 (여러 응답 스키마 처리)
-        let frameworksInSession = null;
+          let frameworksInSession = null;
 
-        if (!sessionInfo) {
-          frameworksInSession = null;
-        } else if (Array.isArray(sessionInfo.frameworks)) {
-          // case 1: { frameworks: [...] }
-          frameworksInSession = sessionInfo.frameworks;
-        } else if (sessionInfo.session && Array.isArray(sessionInfo.session.frameworks)) {
-          // ✅ case 2: { session: { frameworks: [...] } }
-          frameworksInSession = sessionInfo.session.frameworks;
-        } else if (Array.isArray(sessionInfo.sessions)) {
-          // case 3: { sessions: [{ frameworks: [...] }] }
-          frameworksInSession = sessionInfo.sessions.flatMap(s => s.frameworks || []);
-        } else if (sessionInfo?.sessions && sessionInfo.sessions.length === 1 && Array.isArray(sessionInfo.sessions[0]?.frameworks)) {
-          frameworksInSession = sessionInfo.sessions[0].frameworks;
-        } else if (sessionInfo.exists === false) {
-          frameworksInSession = null;
-        }
+          if (!sessionInfo) {
+            frameworksInSession = null;
+          } else if (Array.isArray(sessionInfo.frameworks)) {
+            frameworksInSession = sessionInfo.frameworks;
+          } else if (sessionInfo.session && Array.isArray(sessionInfo.session.frameworks)) {
+            frameworksInSession = sessionInfo.session.frameworks;
+          } else if (Array.isArray(sessionInfo.sessions)) {
+            frameworksInSession = sessionInfo.sessions.flatMap(s => s.frameworks || []);
+          } else if (sessionInfo?.sessions && sessionInfo.sessions.length === 1 && Array.isArray(sessionInfo.sessions[0]?.frameworks)) {
+            frameworksInSession = sessionInfo.sessions[0].frameworks;
+          } else if (sessionInfo.exists === false) {
+            frameworksInSession = null;
+          }
 
-        console.log('🔎 추출된 frameworksInSession:', frameworksInSession);
+          console.log('🔎 전체 진단 frameworksInSession:', frameworksInSession);
 
+          const normalize = s => (s || '').toString().trim().toLowerCase();
+          const targetNormalized = normalize(frameworkCode);
 
-        // 3) 현재 선택한 frameworkCode가 포함되어 있는지 비교 (정규화: trim + toLowerCase)
-        const normalize = s => (s || '').toString().trim().toLowerCase();
-        const targetNormalized = normalize(frameworkCode);
-
-        let hasFramework = false;
-        if (Array.isArray(frameworksInSession)) {
-          for (const fw of frameworksInSession) {
-            if (normalize(fw) === targetNormalized) {
-              hasFramework = true;
-              break;
+          let hasFramework = false;
+          if (Array.isArray(frameworksInSession)) {
+            for (const fw of frameworksInSession) {
+              if (normalize(fw) === targetNormalized) {
+                hasFramework = true;
+                break;
+              }
             }
           }
-        }
 
-        if (hasFramework) {
-          console.log(`✅ 세션에 ${frameworkCode} 진단 기록 존재 - 캐시된 결과 로드`);
-          const cachedResults = await complianceApi.auditAll(frameworkCode, sessionId);
-          console.log('📦 캐시 결과:', cachedResults);
+          if (hasFramework) {
+            console.log(`✅ 전체 진단 세션에 ${frameworkCode} 기록 존재 - 캐시 결과 로드`);
+            const cachedResults = await complianceApi.auditAll(frameworkCode, fullSessionId);
+            console.log('📦 전체 진단 캐시 결과:', cachedResults);
 
-          let requirementsList = [];
-          if (cachedResults && cachedResults.results) {
-            requirementsList = cachedResults.results;
-          } else if (cachedResults && cachedResults.requirements) {
-            requirementsList = cachedResults.requirements;
-          } else if (Array.isArray(cachedResults)) {
-            requirementsList = cachedResults;
-          }
+            let requirementsList = [];
+            if (cachedResults && cachedResults.results) {
+              requirementsList = cachedResults.results;
+            } else if (cachedResults && cachedResults.requirements) {
+              requirementsList = cachedResults.requirements;
+            } else if (Array.isArray(cachedResults)) {
+              requirementsList = cachedResults;
+            }
 
-          if (requirementsList.length > 0) {
-            const resultsMap = {};
-            requirementsList.forEach((reqResult) => {
-              const reqId = reqResult.requirement_id || reqResult.id;
-              if (!reqId) return;
+            if (requirementsList.length > 0) {
+              const resultsMap = {};
+              requirementsList.forEach((reqResult) => {
+                const reqId = reqResult.requirement_id || reqResult.id;
+                if (!reqId) return;
 
-              let requirement_status = 'SKIPPED';
-              if (reqResult.results && Array.isArray(reqResult.results)) {
-                const statuses = reqResult.results.map(r => r.status);
-                if (statuses.includes('NON_COMPLIANT')) requirement_status = 'NON_COMPLIANT';
-                else if (statuses.every(s => s === 'COMPLIANT')) requirement_status = 'COMPLIANT';
-                else if (statuses.every(s => s === 'SKIPPED')) requirement_status = 'SKIPPED';
-              }
-
-              const summary = { COMPLIANT: 0, NON_COMPLIANT: 0, SKIPPED: 0 };
-              if (reqResult.results) {
-                reqResult.results.forEach(r => {
-                  if (r.status) summary[r.status] = (summary[r.status] || 0) + 1;
-                });
-              }
-
-              resultsMap[reqId] = {
-                ...reqResult,
-                requirement_status: reqResult.requirement_status || requirement_status,
-                summary: summary
-              };
-            });
-
-            setAuditResults(resultsMap);
-
-            setRequirements(prev => {
-              const updated = prev.map(req => {
-                const result = resultsMap[req.id];
-                if (result) {
-                  return {
-                    ...req,
-                    mapping_status: result.requirement_status,
-                    audit_result: result
-                  };
+                let requirement_status = 'SKIPPED';
+                if (reqResult.results && Array.isArray(reqResult.results)) {
+                  const statuses = reqResult.results.map(r => r.status);
+                  if (statuses.includes('NON_COMPLIANT')) requirement_status = 'NON_COMPLIANT';
+                  else if (statuses.every(s => s === 'COMPLIANT')) requirement_status = 'COMPLIANT';
+                  else if (statuses.every(s => s === 'SKIPPED')) requirement_status = 'SKIPPED';
                 }
-                return req;
+
+                const summary = { COMPLIANT: 0, NON_COMPLIANT: 0, SKIPPED: 0 };
+                if (reqResult.results) {
+                  reqResult.results.forEach(r => {
+                    if (r.status) summary[r.status] = (summary[r.status] || 0) + 1;
+                  });
+                }
+
+                resultsMap[reqId] = {
+                  ...reqResult,
+                  requirement_status: reqResult.requirement_status || requirement_status,
+                  summary: summary
+                };
               });
-              return updated;
-            });
 
-            console.log('✅ 캐시 결과 표시 완료');
+              setAuditResults(resultsMap);
+
+              setRequirements(prev => {
+                const updated = prev.map(req => {
+                  const result = resultsMap[req.id];
+                  if (result) {
+                    return {
+                      ...req,
+                      mapping_status: result.requirement_status,
+                      audit_result: result
+                    };
+                  }
+                  return req;
+                });
+                return updated;
+              });
+
+              console.log('✅ 전체 진단 캐시 결과 표시 완료');
+            }
           } else {
-            console.log('📭 캐시 결과는 비어 있음');
+            console.log(`⚠️ 전체 진단 세션에 ${frameworkCode} 기록 없음`);
           }
-        } else {
-          console.log(`⚠️ 세션에는 ${frameworkCode} 기록 없음 - 캐시 결과 표시하지 않음`);
+        } catch (err) {
+          console.error('❌ 전체 진단 세션 확인 실패:', err);
         }
-      } catch (err) {
-        console.error('❌ 세션 확인 또는 캐시 로드 실패:', err);
       }
-    } else {
-      console.log('🆕 세션 없음 - audit API 호출하지 않음');
+
+      // ✅ 2. 개별 진단 세션들 확인 및 복원
+      console.log(`🔍 [개별 진단] 세션 복원 시작`);
+      const individualResults = {};
+      
+      for (const req of data) {
+        const individualKey = `${frameworkCode}_req_${req.id}`;
+        const individualSessionId = getSessionId(individualKey);
+        
+        if (individualSessionId) {
+          console.log(`✅ 개별 세션 발견 [${individualKey}]:`, individualSessionId);
+          try {
+            // 개별 진단 결과 조회
+            const individualResult = await complianceApi.auditRequirement(
+              frameworkCode, 
+              req.id, 
+              individualSessionId
+            );
+            
+            console.log(`📦 개별 진단 캐시 결과 [${req.id}]:`, individualResult);
+            
+            if (individualResult) {
+              individualResults[req.id] = individualResult;
+            }
+          } catch (err) {
+            console.error(`❌ 개별 진단 세션 복원 실패 [${req.id}]:`, err);
+            // 세션이 만료되었으면 삭제
+            clearSessionId(individualKey);
+          }
+        }
+      }
+
+      // ✅ 3. 개별 진단 결과를 requirements에 반영
+      if (Object.keys(individualResults).length > 0) {
+        console.log(`✅ ${Object.keys(individualResults).length}개 개별 진단 결과 복원`);
+        
+        setAuditResults(prev => ({
+          ...prev,
+          ...individualResults
+        }));
+
+        setRequirements(prev => {
+          return prev.map(req => {
+            const individualResult = individualResults[req.id];
+            if (individualResult) {
+              return {
+                ...req,
+                mapping_status: individualResult.requirement_status,
+                audit_result: individualResult
+              };
+            }
+            return req;
+          });
+        });
+      }
+
+    } catch (err) {
+      console.error('❌ 요구사항 조회 실패:', err);
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('❌ 요구사항 조회 실패:', err);
-  } finally {
-    setLoading(false);
-  }
-};
-
-
+  };
 
   const fetchMappingDetail = async (frameworkCode, reqId) => {
     setLoading(true);
@@ -270,14 +323,14 @@ const Policies2 = () => {
   const auditRequirement = async (frameworkCode, reqId) => {
     setAuditing(true);
     try {
-      console.log('🎯 개별 진단 시작 - 새 세션 생성');
+      console.log(`🎯 개별 진단 시작 [${frameworkCode}:${reqId}] - 독립 세션 생성`);
       
-      // 항상 새 세션 생성
+      // ✅ 개별 진단은 독립적인 세션 키 사용
+      const individualKey = `${frameworkCode}_req_${reqId}`;
       const newSessionId = generateSessionId();
-      setSessionId(newSessionId);
-      console.log('🆕 새 세션:', newSessionId);
+      setSessionId(individualKey, newSessionId);
+      console.log(`🆕 개별 진단 세션 [${individualKey}]:`, newSessionId);
 
-      // 진단 수행
       const auditData = await complianceApi.auditRequirement(frameworkCode, reqId, newSessionId);
       console.log('✅ 진단 완료:', auditData);
 
@@ -315,12 +368,12 @@ const Policies2 = () => {
     setProgress({ total: 0, executed: 0 });
 
     try {
-      console.log('🚀 전체 진단 시작 - 새 세션 생성');
+      console.log(`🚀 전체 진단 시작 [${frameworkCode}] - 새 세션 생성`);
       
-      // 항상 새 세션 생성
+      // ✅ 전체 진단 세션 생성 (프레임워크별로 독립)
       const newSessionId = generateSessionId();
-      setSessionId(newSessionId);
-      console.log('🆕 새 세션:', newSessionId);
+      setSessionId(frameworkCode, newSessionId);
+      console.log(`🆕 전체 진단 세션 [${frameworkCode}]:`, newSessionId);
 
       let executed = 0;
       let total = 0;
@@ -348,7 +401,7 @@ const Policies2 = () => {
         }
       });
 
-      console.log('✅ 전체 진단 완료');
+      console.log(`✅ 전체 진단 완료 [${frameworkCode}]`);
       alert('전체 진단이 완료되었습니다.');
     } catch (err) {
       console.error('❌ 전체 진단 실패:', err);
