@@ -1,7 +1,6 @@
 // src/pages/Policies2.js
 import React, { useState, useEffect } from 'react';
 import { ClipboardList, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { sessionService } from '../services/sessionService';
 import { complianceApi } from '../services/complianceApi';
 import gdprLogo from './logo/gdpr.png';
 import ismspLogo from './logo/ismsp.png';
@@ -15,6 +14,7 @@ import soc2Logo from './logo/soc2.png';
 import pipaLogo from './logo/pipa.png';
 
 const API_BASE = 'http://211.44.183.248:8003';
+const SESSION_COOKIE_NAME = 'compliance_session_id';
 
 const Policies2 = () => {
   const [frameworks, setFrameworks] = useState([]);
@@ -56,20 +56,40 @@ const Policies2 = () => {
     default: null,
   };
 
+  // 세션 관리 헬퍼 함수들
+  const getSessionId = () => {
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+      const [name, value] = cookie.trim().split('=');
+      if (name === SESSION_COOKIE_NAME) {
+        return decodeURIComponent(value);
+      }
+    }
+    return null;
+  };
+
+  const setSessionId = (sessionId) => {
+    const maxAge = 30 * 60; // 30분
+    document.cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionId)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+    console.log('🍪 세션 ID 저장:', sessionId);
+  };
+
+  const clearSessionId = () => {
+    document.cookie = `${SESSION_COOKIE_NAME}=; path=/; max-age=0`;
+    console.log('🗑️ 세션 ID 삭제');
+  };
+
+  const generateSessionId = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
   const getFrameworkLogo = (frameworkName) => frameworkLogos[frameworkName] || frameworkLogos.default;
 
   useEffect(() => {
-    const initSession = async () => {
-      if (!sessionService.hasSession()) {
-        try {
-          await sessionService.startSession();
-        } catch (error) {
-          console.error('Failed to start session:', error);
-        }
-      }
-    };
-
-    initSession();
     fetchFrameworks();
   }, []);
 
@@ -80,11 +100,10 @@ const Policies2 = () => {
       const response = await fetch(`${API_BASE}/compliance/stats`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
-      // SAGE-Threat 제외
       const filteredData = data.filter(fw => fw.framework !== 'SAGE-Threat');
       setFrameworks(filteredData);
     } catch (err) {
-      console.error('프레임워크 조회 실패:', err);
+      console.error('❌ 프레임워크 조회 실패:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -92,23 +111,147 @@ const Policies2 = () => {
   };
 
   const fetchRequirements = async (frameworkCode) => {
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
-      const data = await response.json();
-      setRequirements(data);
-      setSelectedFramework(frameworkCode);
-      setSidePanelOpen(false);
-      setMappingDetail(null);
-      setAuditResults({});
-      setExpandedItems({});
-      setCurrentPage(1);
-    } catch (err) {
-      console.error('요구사항 조회 실패:', err);
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements`);
+    const data = await response.json();
+    setRequirements(data);
+    setSelectedFramework(frameworkCode);
+    setSidePanelOpen(false);
+    setMappingDetail(null);
+    setAuditResults({});
+    setExpandedItems({});
+    setCurrentPage(1);
+
+    // 세션 확인
+    const sessionId = getSessionId();
+    console.log('🔍 세션 ID 확인:', sessionId);
+
+    if (sessionId) {
+      console.log('✅ 세션 존재 - 세션 유효성 및 프레임워크 포함 여부 확인');
+      try {
+        // 1) 세션 상세 조회
+        const sessionInfo = await complianceApi.checkSession(sessionId);
+        console.log('📋 raw sessionInfo:', sessionInfo);
+
+        // 2) frameworks 배열을 안전하게 추출 (여러 응답 스키마 처리)
+        // 2) frameworks 배열을 안전하게 추출 (여러 응답 스키마 처리)
+        let frameworksInSession = null;
+
+        if (!sessionInfo) {
+          frameworksInSession = null;
+        } else if (Array.isArray(sessionInfo.frameworks)) {
+          // case 1: { frameworks: [...] }
+          frameworksInSession = sessionInfo.frameworks;
+        } else if (sessionInfo.session && Array.isArray(sessionInfo.session.frameworks)) {
+          // ✅ case 2: { session: { frameworks: [...] } }
+          frameworksInSession = sessionInfo.session.frameworks;
+        } else if (Array.isArray(sessionInfo.sessions)) {
+          // case 3: { sessions: [{ frameworks: [...] }] }
+          frameworksInSession = sessionInfo.sessions.flatMap(s => s.frameworks || []);
+        } else if (sessionInfo?.sessions && sessionInfo.sessions.length === 1 && Array.isArray(sessionInfo.sessions[0]?.frameworks)) {
+          frameworksInSession = sessionInfo.sessions[0].frameworks;
+        } else if (sessionInfo.exists === false) {
+          frameworksInSession = null;
+        }
+
+        console.log('🔎 추출된 frameworksInSession:', frameworksInSession);
+
+
+        // 3) 현재 선택한 frameworkCode가 포함되어 있는지 비교 (정규화: trim + toLowerCase)
+        const normalize = s => (s || '').toString().trim().toLowerCase();
+        const targetNormalized = normalize(frameworkCode);
+
+        let hasFramework = false;
+        if (Array.isArray(frameworksInSession)) {
+          for (const fw of frameworksInSession) {
+            if (normalize(fw) === targetNormalized) {
+              hasFramework = true;
+              break;
+            }
+          }
+        }
+
+        if (hasFramework) {
+          console.log(`✅ 세션에 ${frameworkCode} 진단 기록 존재 - 캐시된 결과 로드`);
+          const cachedResults = await complianceApi.auditAll(frameworkCode, sessionId);
+          console.log('📦 캐시 결과:', cachedResults);
+
+          let requirementsList = [];
+          if (cachedResults && cachedResults.results) {
+            requirementsList = cachedResults.results;
+          } else if (cachedResults && cachedResults.requirements) {
+            requirementsList = cachedResults.requirements;
+          } else if (Array.isArray(cachedResults)) {
+            requirementsList = cachedResults;
+          }
+
+          if (requirementsList.length > 0) {
+            const resultsMap = {};
+            requirementsList.forEach((reqResult) => {
+              const reqId = reqResult.requirement_id || reqResult.id;
+              if (!reqId) return;
+
+              let requirement_status = 'SKIPPED';
+              if (reqResult.results && Array.isArray(reqResult.results)) {
+                const statuses = reqResult.results.map(r => r.status);
+                if (statuses.includes('NON_COMPLIANT')) requirement_status = 'NON_COMPLIANT';
+                else if (statuses.every(s => s === 'COMPLIANT')) requirement_status = 'COMPLIANT';
+                else if (statuses.every(s => s === 'SKIPPED')) requirement_status = 'SKIPPED';
+              }
+
+              const summary = { COMPLIANT: 0, NON_COMPLIANT: 0, SKIPPED: 0 };
+              if (reqResult.results) {
+                reqResult.results.forEach(r => {
+                  if (r.status) summary[r.status] = (summary[r.status] || 0) + 1;
+                });
+              }
+
+              resultsMap[reqId] = {
+                ...reqResult,
+                requirement_status: reqResult.requirement_status || requirement_status,
+                summary: summary
+              };
+            });
+
+            setAuditResults(resultsMap);
+
+            setRequirements(prev => {
+              const updated = prev.map(req => {
+                const result = resultsMap[req.id];
+                if (result) {
+                  return {
+                    ...req,
+                    mapping_status: result.requirement_status,
+                    audit_result: result
+                  };
+                }
+                return req;
+              });
+              return updated;
+            });
+
+            console.log('✅ 캐시 결과 표시 완료');
+          } else {
+            console.log('📭 캐시 결과는 비어 있음');
+          }
+        } else {
+          console.log(`⚠️ 세션에는 ${frameworkCode} 기록 없음 - 캐시 결과 표시하지 않음`);
+        }
+      } catch (err) {
+        console.error('❌ 세션 확인 또는 캐시 로드 실패:', err);
+      }
+    } else {
+      console.log('🆕 세션 없음 - audit API 호출하지 않음');
     }
-  };
+  } catch (err) {
+    console.error('❌ 요구사항 조회 실패:', err);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 
   const fetchMappingDetail = async (frameworkCode, reqId) => {
     setLoading(true);
@@ -118,7 +261,7 @@ const Policies2 = () => {
       setMappingDetail(data);
       setSidePanelOpen(true);
     } catch (err) {
-      console.error('매핑 상세 조회 실패:', err);
+      console.error('❌ 매핑 상세 조회 실패:', err);
     } finally {
       setLoading(false);
     }
@@ -127,19 +270,28 @@ const Policies2 = () => {
   const auditRequirement = async (frameworkCode, reqId) => {
     setAuditing(true);
     try {
-      const auditData = await complianceApi.auditRequirement(frameworkCode, reqId);
+      console.log('🎯 개별 진단 시작 - 새 세션 생성');
+      
+      // 항상 새 세션 생성
+      const newSessionId = generateSessionId();
+      setSessionId(newSessionId);
+      console.log('🆕 새 세션:', newSessionId);
 
-      setAuditResults((prev) => ({
+      // 진단 수행
+      const auditData = await complianceApi.auditRequirement(frameworkCode, reqId, newSessionId);
+      console.log('✅ 진단 완료:', auditData);
+
+      setAuditResults(prev => ({
         ...prev,
         [reqId]: auditData,
       }));
 
-      setRequirements((prev) =>
-        prev.map((req) =>
+      setRequirements(prev =>
+        prev.map(req =>
           req.id === reqId
             ? {
                 ...req,
-                mapping_status: auditData.requirement_status || 'Audited',
+                mapping_status: auditData.requirement_status,
                 audit_result: auditData,
               }
             : req
@@ -148,8 +300,8 @@ const Policies2 = () => {
 
       alert('진단이 완료되었습니다.');
     } catch (err) {
-      console.error('진단 실패:', err);
-      alert('진단 실패했습니다: ' + err.message);
+      console.error('❌ 진단 실패:', err);
+      alert('진단에 실패했습니다: ' + err.message);
     } finally {
       setAuditing(false);
     }
@@ -163,10 +315,17 @@ const Policies2 = () => {
     setProgress({ total: 0, executed: 0 });
 
     try {
+      console.log('🚀 전체 진단 시작 - 새 세션 생성');
+      
+      // 항상 새 세션 생성
+      const newSessionId = generateSessionId();
+      setSessionId(newSessionId);
+      console.log('🆕 새 세션:', newSessionId);
+
       let executed = 0;
       let total = 0;
 
-      await complianceApi.auditAllStreaming(frameworkCode, (evt) => {
+      await complianceApi.auditAllStreaming(frameworkCode, newSessionId, (evt) => {
         if (evt.type === 'meta') {
           total = evt.total || 0;
           setProgress({ total, executed });
@@ -174,22 +333,25 @@ const Policies2 = () => {
           executed += 1;
           setProgress({ total, executed });
 
-          setRequirements((prev) =>
-            prev.map((r) =>
+          setRequirements(prev =>
+            prev.map(r =>
               r.id === evt.requirement_id
                 ? { ...r, mapping_status: evt.requirement_status, audit_result: evt }
                 : r
             )
           );
-          setAuditResults((prev) => ({ ...prev, [evt.requirement_id]: evt }));
-        } else if (evt.type === 'summary') {
-          // 요약 처리 (필요시)
+          
+          setAuditResults(prev => ({
+            ...prev,
+            [evt.requirement_id]: evt
+          }));
         }
       });
 
+      console.log('✅ 전체 진단 완료');
       alert('전체 진단이 완료되었습니다.');
     } catch (err) {
-      console.error('전체 진단 실패:', err);
+      console.error('❌ 전체 진단 실패:', err);
       alert('전체 진단에 실패했습니다: ' + err.message);
     } finally {
       setStreaming(false);
@@ -243,7 +405,7 @@ const Policies2 = () => {
   };
 
   const toggleExpand = (mappingCode) => {
-    setExpandedItems((prev) => ({
+    setExpandedItems(prev => ({
       ...prev,
       [mappingCode]: !prev[mappingCode],
     }));
@@ -321,7 +483,7 @@ const Policies2 = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {frameworks.map((fw) => (
+              {frameworks.map(fw => (
                 <div
                   key={fw.framework}
                   onClick={() => fetchRequirements(fw.framework)}
@@ -334,7 +496,7 @@ const Policies2 = () => {
                           src={getFrameworkLogo(fw.framework)}
                           alt={`${fw.framework} logo`}
                           className="w-full h-full object-contain p-1"
-                          onError={(e) => {
+                          onError={e => {
                             e.target.style.display = 'none';
                             e.target.nextSibling.style.display = 'block';
                           }}
@@ -410,7 +572,7 @@ const Policies2 = () => {
                       <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900" style={{ width: '40px' }}>
                         {req.audit_result && (
                           <button
-                            onClick={(e) => {
+                            onClick={e => {
                               e.stopPropagation();
                               toggleExpand(`req-${req.id}`);
                             }}
@@ -446,24 +608,22 @@ const Policies2 = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap" style={{ width: '100px' }}>{getMappingStatusBadge(req.mapping_status)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900" style={{ width: '200px' }}>
-                        {req.threat_hits && req.threat_hits.length > 0 ? (
-                          <div 
+                        {req.threats && req.threats.length > 0 ? (
+                          <div
                             className="space-y-1 cursor-pointer hover:text-blue-600 transition-colors"
-                            onClick={() => setExpandedText({ 
-                              title: '관련 위협', 
-                              content: req.threat_hits,
-                              isTable: true 
+                            onClick={() => setExpandedText({
+                              title: '관련 위협',
+                              content: req.threats,
+                              isTable: true
                             })}
                           >
-                            {req.threat_hits.slice(0, 2).map((threat, idx) => (
+                            {req.threats.slice(0, 2).map((threat, idx) => (
                               <div key={idx} className="text-xs text-gray-700">
-                                • {threat.item_code || threat.title}
+                                • {threat.title || `Threat ${idx + 1}`}
                               </div>
                             ))}
-                            {req.threat_hits.length > 2 && (
-                              <div className="text-xs text-gray-500">
-                                +{req.threat_hits.length - 2}개 더
-                              </div>
+                            {req.threats.length > 2 && (
+                              <div className="text-xs text-gray-500">+{req.threats.length - 2}개 더</div>
                             )}
                           </div>
                         ) : (
@@ -479,7 +639,7 @@ const Policies2 = () => {
                             상세보기
                           </button>
                           <button
-                            onClick={(e) => {
+                            onClick={e => {
                               e.stopPropagation();
                               auditRequirement(selectedFramework, req.id);
                             }}
@@ -497,7 +657,6 @@ const Policies2 = () => {
                       <tr className="bg-gray-50">
                         <td colSpan="8" className="px-6 py-4">
                           <div className="space-y-4">
-                            {/* 요약 통계 */}
                             {req.audit_result.summary && (
                               <div className="grid grid-cols-3 gap-4">
                                 <div className="bg-green-50 p-3 rounded-lg border border-green-200">
@@ -521,7 +680,6 @@ const Policies2 = () => {
                               </div>
                             )}
 
-                            {/* 진단 결과 아코디언 */}
                             {req.audit_result.results && req.audit_result.results.length > 0 ? (
                               <div className="space-y-2">
                                 {req.audit_result.results.map((result, idx) => {
@@ -616,7 +774,6 @@ const Policies2 = () => {
             </table>
           </div>
 
-          {/* Pagination */}
           <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
             <div className="text-sm text-gray-700">
               {requirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, requirements.length)}-{Math.min(currentPage * itemsPerPage, requirements.length)} 표시
@@ -676,7 +833,7 @@ const Policies2 = () => {
         >
           <div 
             className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-auto m-4"
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-lg font-semibold text-gray-900">{expandedText.title}</h3>
