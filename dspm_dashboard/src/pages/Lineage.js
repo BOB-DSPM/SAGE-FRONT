@@ -481,7 +481,8 @@ const Lineage = () => {
           nodeData: processNode
         },
         style: getDataNodeStyle('processNode', false, false, false),
-        position: { x: 0, y: 0 },
+        position: { x: 0, y: 0 },        
+        draggable: false,
       });
 
       const pipelineNode = pipelineNodes.find(pn => pn.id === processNode.stepId);
@@ -528,7 +529,8 @@ const Lineage = () => {
                   nodeData: dataNode
                 },
                 style: getDataNodeStyle('dataArtifact', false, false, false),
-                position: { x: 0, y: 0 },
+                position: { x: 0, y: 0 },        
+                draggable: false,
               });
 
               newEdges.push({
