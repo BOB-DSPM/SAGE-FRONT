@@ -863,6 +863,7 @@ const Lineage = () => {
           </div>
         )}
 
+
         {showPanel && selectedNodeData && (
           <div className="absolute right-0 top-0 bottom-0 w-96 bg-white border-l border-gray-200 shadow-lg overflow-y-auto z-20">
             <div className="p-4">
@@ -877,45 +878,206 @@ const Lineage = () => {
               </div>
 
               <div className="space-y-4 text-sm">
-                <div>
-                  <div className="font-semibold text-gray-700 mb-2">타입:</div>
-                  <div>{safeValue(selectedNodeData.type || selectedNodeData.stepType)}</div>
-                </div>
-                
-                {selectedNodeData.run && (
-                  <>
-                    <div>
-                      <div className="font-semibold text-gray-700 mb-2">상태:</div>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(selectedNodeData.run.status)}
-                        <span>{safeValue(selectedNodeData.run.status)}</span>
-                      </div>
+                {/* Job Name / Step Name */}
+                {(selectedNodeData.run?.jobName || selectedNodeData.label) && (
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <div className="font-semibold text-blue-900 mb-2">
+                      {selectedNodeData.type === 'processNode' || selectedNodeData.run ? 'Job Name' : 'Name'}
                     </div>
-                    {selectedNodeData.run.elapsedSec != null && (
-                      <div>
-                        <div className="font-semibold text-gray-700 mb-2">소요 시간:</div>
-                        <div>{formatDuration(selectedNodeData.run.elapsedSec)}</div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {selectedNodeData.uri && (
-                  <div>
-                    <div className="font-semibold text-gray-700 mb-2">URI:</div>
-                    <div className="font-mono text-xs break-all bg-gray-50 p-2 rounded">
-                      {selectedNodeData.uri}
+                    <div className="font-mono text-xs break-all">
+                      {selectedNodeData.run?.jobName || selectedNodeData.label || selectedNodeData.id}
                     </div>
                   </div>
                 )}
 
-                {selectedNodeData.meta?.s3 && (
-                  <div>
-                    <div className="font-semibold text-gray-700 mb-2">S3 정보:</div>
-                    <div className="space-y-1 bg-gray-50 p-2 rounded text-xs">
-                      <div><span className="text-gray-600">Bucket:</span> {selectedNodeData.meta.s3.bucket}</div>
-                      <div><span className="text-gray-600">Region:</span> {selectedNodeData.meta.s3.region}</div>
-                      <div><span className="text-gray-600">Encryption:</span> {selectedNodeData.meta.s3.encryption}</div>
+                {/* Job ARN */}
+                {selectedNodeData.run?.jobArn && (
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <div className="font-semibold text-gray-700 mb-2">Job ARN</div>
+                    <div className="font-mono text-xs break-all text-gray-600">
+                      {selectedNodeData.run.jobArn}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inputs Section */}
+                {selectedNodeData.inputs && selectedNodeData.inputs.length > 0 && (
+                  <div className="border-t pt-4">
+                    <div className="font-bold text-gray-800 mb-3">Inputs ({selectedNodeData.inputs.length})</div>
+                    <div className="space-y-3">
+                      {selectedNodeData.inputs.map((input, idx) => {
+                        const uri = safeValue(input.uri);
+                        const isS3Uri = uri.startsWith('s3://');
+                        const bucket = isS3Uri ? uri.split('/')[2] : null;
+                        const key = isS3Uri ? uri.split('/').slice(3).join('/') : null;
+
+                        return (
+                          <div key={idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <div className="font-semibold text-sm mb-2">{input.name}</div>
+                            <div className="font-mono text-xs break-all text-blue-600 mb-2">
+                              {uri}
+                            </div>
+                            {isS3Uri && bucket && (
+                              <div className="space-y-1 text-xs pt-2 border-t border-gray-300">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Bucket:</span>
+                                  <span className="font-mono">{bucket}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Region:</span>
+                                  <span>{selectedNodeData.meta?.s3?.region || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Encryption:</span>
+                                  <span>{selectedNodeData.meta?.s3?.encryption || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Versioning:</span>
+                                  <span>{selectedNodeData.meta?.s3?.versioning || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Public Access:</span>
+                                  <span className={selectedNodeData.meta?.s3?.publicAccess === 'Blocked' ? 'text-green-600' : 'text-red-600'}>
+                                    {selectedNodeData.meta?.s3?.publicAccess || 'Unknown'}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Outputs Section */}
+                {selectedNodeData.outputs && selectedNodeData.outputs.length > 0 && (
+                  <div className="border-t pt-4">
+                    <div className="font-bold text-gray-800 mb-3">Outputs ({selectedNodeData.outputs.length})</div>
+                    <div className="space-y-3">
+                      {selectedNodeData.outputs.map((output, idx) => {
+                        const uri = safeValue(output.uri);
+                        const isS3Uri = uri.startsWith('s3://');
+                        const bucket = isS3Uri ? uri.split('/')[2] : null;
+                        const key = isS3Uri ? uri.split('/').slice(3).join('/') : null;
+
+                        return (
+                          <div key={idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <div className="font-semibold text-sm mb-2">{output.name}</div>
+                            <div className="font-mono text-xs break-all text-green-600 mb-2">
+                              {uri}
+                            </div>
+                            {isS3Uri && bucket && (
+                              <div className="space-y-1 text-xs pt-2 border-t border-gray-300">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Bucket:</span>
+                                  <span className="font-mono">{bucket}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Region:</span>
+                                  <span>{selectedNodeData.meta?.s3?.region || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Encryption:</span>
+                                  <span>{selectedNodeData.meta?.s3?.encryption || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Versioning:</span>
+                                  <span>{selectedNodeData.meta?.s3?.versioning || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Public Access:</span>
+                                  <span className={selectedNodeData.meta?.s3?.publicAccess === 'Blocked' ? 'text-green-600' : 'text-red-600'}>
+                                    {selectedNodeData.meta?.s3?.publicAccess || 'Unknown'}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Data Artifact URI (for data nodes) */}
+                {selectedNodeData.uri && selectedNodeData.type === 'dataArtifact' && (
+                  <div className="border-t pt-4">
+                    <div className="font-bold text-gray-800 mb-3">URI</div>
+                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <div className="font-mono text-xs break-all text-blue-600 mb-2">
+                        {selectedNodeData.uri}
+                      </div>
+                      {selectedNodeData.meta?.s3 && (
+                        <div className="space-y-1 text-xs pt-2 border-t border-gray-300">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Bucket:</span>
+                            <span className="font-mono">{selectedNodeData.meta.s3.bucket}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Region:</span>
+                            <span>{selectedNodeData.meta.s3.region}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Encryption:</span>
+                            <span>{selectedNodeData.meta.s3.encryption}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Versioning:</span>
+                            <span>{selectedNodeData.meta.s3.versioning}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Public Access:</span>
+                            <span className={selectedNodeData.meta.s3.publicAccess === 'Blocked' ? 'text-green-600' : 'text-red-600'}>
+                              {selectedNodeData.meta.s3.publicAccess}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Run Information */}
+                {selectedNodeData.run && (
+                  <div className="border-t pt-4">
+                    <div className="font-bold text-gray-800 mb-3">실행 정보</div>
+                    <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">상태:</span>
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(selectedNodeData.run.status)}
+                          <span className="font-medium">{safeValue(selectedNodeData.run.status)}</span>
+                        </div>
+                      </div>
+                      {selectedNodeData.run.elapsedSec != null && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">소요 시간:</span>
+                          <span className="font-medium">{formatDuration(selectedNodeData.run.elapsedSec)}</span>
+                        </div>
+                      )}
+                      {selectedNodeData.run.startTime && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">시작:</span>
+                          <span className="text-xs">{new Date(selectedNodeData.run.startTime).toLocaleString('ko-KR')}</span>
+                        </div>
+                      )}
+                      {selectedNodeData.run.endTime && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">종료:</span>
+                          <span className="text-xs">{new Date(selectedNodeData.run.endTime).toLocaleString('ko-KR')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step Type */}
+                {(selectedNodeData.type || selectedNodeData.stepType) && (
+                  <div className="border-t pt-4">
+                    <div className="font-bold text-gray-800 mb-3">타입</div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <div className="font-medium">{safeValue(selectedNodeData.type || selectedNodeData.stepType)}</div>
                     </div>
                   </div>
                 )}
