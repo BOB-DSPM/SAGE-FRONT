@@ -14,13 +14,22 @@ import Lineage from './pages/Lineage';
 import AegisResults from './pages/AegisResults';
 import ThreatCompliance from './pages/ThreatCompliance';
 import ThreatComplianceDetail from './pages/ThreatComplianceDetail';
-import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3, ClipboardList, FolderSearch, ShieldAlert } from 'lucide-react';
+
+// ✅ 추가: Opensource 페이지 임포트
+import Opensource from './pages/Opensource';
+
+// ✅ 추가: 아이콘 임포트 확장 (lucide-react)
+import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3, ClipboardList, FolderSearch, ShieldAlert, Boxes } from 'lucide-react';
 
 const tabs = [
   { id: 'overview', name: 'Overview', icon: Activity },
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
   { id: 'data-target', name: 'Data Collector', icon: FolderSearch },
   { id: 'lineage', name: 'Lineage', icon: GitBranch },
+
+  // ✅ 추가: Opensource 단일 탭
+  { id: 'opensource', name: 'Opensource', icon: Boxes },
+
   // 아코디언 메뉴
   { 
     id: 'audit', 
@@ -45,6 +54,8 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
     policies: 0,
     policies2: 0,
     'threat-compliance': 0,
+    // ✅ 추가: opensource 키
+    opensource: 0,
     //alerts: 0,
   });
 
@@ -57,7 +68,7 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
     setActiveTab(tabId);
     setComponentKeys(prev => ({
       ...prev,
-      [tabId]: prev[tabId] + 1
+      [tabId]: (prev[tabId] ?? 0) + 1
     }));
   };
 
@@ -82,6 +93,8 @@ const MainDashboard = ({ onLogout }) => {
     policies: 0,
     policies2: 0,
     'threat-compliance': 0,
+    // ✅ 추가: opensource 키
+    opensource: 0,
     //alerts: 0,
   });
 
@@ -89,7 +102,7 @@ const MainDashboard = ({ onLogout }) => {
     setActiveTab(tabId);
     setComponentKeys(prev => ({
       ...prev,
-      [tabId]: prev[tabId] + 1
+      [tabId]: (prev[tabId] ?? 0) + 1
     }));
   };
 
@@ -109,8 +122,13 @@ const MainDashboard = ({ onLogout }) => {
         return <Lineage key={componentKeys.lineage} />;
       case 'threat-compliance':
         return <ThreatCompliance key={componentKeys['threat-compliance']} />;
+
+      // ✅ 추가: opensource 렌더
+      case 'opensource':
+        return <Opensource key={componentKeys.opensource} />;
+
       //case 'aws-setup':
-       // return <AwsSetup key={componentKeys['aws-setup']} />;
+      //  return <AwsSetup key={componentKeys['aws-setup']} />;
       default:
         return <Overview key={componentKeys.overview} securityScoreData={{ score: 79 }} />;
     }
