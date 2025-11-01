@@ -683,140 +683,200 @@ const Lineage = () => {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      {/* 헤더 영역 - 64px 고정 */}
-      <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm flex-shrink-0">
-        <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
-        
-        <div className="relative mr-4">
-          <button
-            onClick={() => setShowDomainDropdown(!showDomainDropdown)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Database className="w-4 h-4" />
-            <span className="text-sm font-medium">{selectedDomain.name}</span>
-            <ChevronDown className="w-4 h-4" />
-          </button>
+      {/* 헤더 영역 */}
+      <div className="bg-white border-b border-gray-200 px-6 shadow-sm flex-shrink-0">
+        {/* 첫 번째 줄: 기존 헤더 */}
+        <div className="h-16 flex items-center">
+          <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
           
-          {showDomainDropdown && (
-            <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-              <div 
-                onClick={() => handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })}
-                className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
-              >
-                <div className="font-medium text-sm">전체 도메인</div>
-                <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
-              </div>
-              
-              {domains.map((domain) => (
-                <div 
-                  key={domain.id}
-                  onClick={() => handleDomainSelect(domain)}
-                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
-                >
-                  <div className="font-medium text-sm">{domain.name}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {domain.region} | {getDomainPipelineCount(domain.id)}개
-                  </div>
-                </div>
-              ))}
-              
-              <div 
-                onClick={() => handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })}
-                className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
-              >
-                <div className="font-medium text-sm">태그 없음</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {getDomainPipelineCount('__untagged__')}개
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {showPipelineList && (
-          <div className="relative">
+          <div className="relative mr-4">
             <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              disabled={loadingPipelines}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+              onClick={() => setShowDomainDropdown(!showDomainDropdown)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              {loadingPipelines ? (
-                <>
-                  <Loader className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">로딩 중...</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-sm font-medium">
-                    {selectedPipeline ? selectedPipeline.name : '파이프라인 선택'}
-                  </span>
-                  <ChevronDown className="w-4 h-4" />
-                </>
-              )}
+              <Database className="w-4 h-4" />
+              <span className="text-sm font-medium">{selectedDomain.name}</span>
+              <ChevronDown className="w-4 h-4" />
             </button>
             
-            {showDropdown && !loadingPipelines && (
-              <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-                {filteredPipelines.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-gray-500">
-                    파이프라인이 없습니다
-                  </div>
-                ) : (
-                  filteredPipelines.map((pipeline) => (
-                    <div 
-                      key={pipeline.arn}
-                      onClick={() => handlePipelineSelect(pipeline)}
-                      className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
-                    >
-                      <div className="font-medium text-sm">{pipeline.name}</div>
-                      <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
+            {showDomainDropdown && (
+              <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                <div 
+                  onClick={() => handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })}
+                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                >
+                  <div className="font-medium text-sm">전체 도메인</div>
+                  <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
+                </div>
+                
+                {domains.map((domain) => (
+                  <div 
+                    key={domain.id}
+                    onClick={() => handleDomainSelect(domain)}
+                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                  >
+                    <div className="font-medium text-sm">{domain.name}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {domain.region} | {getDomainPipelineCount(domain.id)}개
                     </div>
-                  ))
-                )}
+                  </div>
+                ))}
+                
+                <div 
+                  onClick={() => handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })}
+                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                >
+                  <div className="font-medium text-sm">태그 없음</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {getDomainPipelineCount('__untagged__')}개
+                  </div>
+                </div>
               </div>
             )}
           </div>
-        )}
 
+          {showPipelineList && (
+            <div className="relative">
+              <button
+                onClick={() => setShowDropdown(!showDropdown)}
+                disabled={loadingPipelines}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+              >
+                {loadingPipelines ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">로딩 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm font-medium">
+                      {selectedPipeline ? selectedPipeline.name : '파이프라인 선택'}
+                    </span>
+                    <ChevronDown className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+              
+              {showDropdown && !loadingPipelines && (
+                <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                  {filteredPipelines.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-gray-500">
+                      파이프라인이 없습니다
+                    </div>
+                  ) : (
+                    filteredPipelines.map((pipeline) => (
+                      <div 
+                        key={pipeline.arn}
+                        onClick={() => handlePipelineSelect(pipeline)}
+                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                      >
+                        <div className="font-medium text-sm">{pipeline.name}</div>
+                        <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedPipeline && lineageData && (
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => handleViewModeChange('pipeline')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  viewMode === 'pipeline'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <GitBranch className="w-4 h-4" />
+                <span className="text-sm font-medium">파이프라인 관점</span>
+              </button>
+              <button
+                onClick={() => handleViewModeChange('data')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  viewMode === 'data'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                <span className="text-sm font-medium">데이터 관점</span>
+              </button>
+            </div>
+          )}
+
+          {selectedPipeline && (
+            <button
+              onClick={() => {
+                setSelectedPipeline(null);
+                setShowPipelineList(true);
+                setNodes([]);
+                setEdges([]);
+              }}
+              className="ml-4 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        {/* 두 번째 줄: 파이프라인 상세 정보 */}
         {selectedPipeline && lineageData && (
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => handleViewModeChange('pipeline')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                viewMode === 'pipeline'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <GitBranch className="w-4 h-4" />
-              <span className="text-sm font-medium">파이프라인 관점</span>
-            </button>
-            <button
-              onClick={() => handleViewModeChange('data')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                viewMode === 'data'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              <span className="text-sm font-medium">데이터 관점</span>
-            </button>
-          </div>
-        )}
+          <div className="pb-4 pt-2 border-t border-gray-100">
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">파이프라인 이름</div>
+                <div className="font-semibold text-sm text-gray-900 truncate" title={lineageData.pipeline?.name || selectedPipeline.name}>
+                  {lineageData.pipeline?.name || selectedPipeline.name}
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">도메인</div>
+                <div className="font-semibold text-sm text-gray-900 truncate" title={lineageData.domain?.name || selectedDomain.name}>
+                  {lineageData.domain?.name || selectedDomain.name}
+                </div>
+              </div>
 
-        {selectedPipeline && (
-          <button
-            onClick={() => {
-              setSelectedPipeline(null);
-              setShowPipelineList(true);
-              setNodes([]);
-              setEdges([]);
-            }}
-            className="ml-4 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
-          >
-            <X className="w-5 h-5" />
-          </button>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">리전</div>
+                <div className="font-semibold text-sm text-gray-900">
+                  {selectedPipeline.region || 'ap-northeast-2'}
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">마지막 수정</div>
+                <div className="font-semibold text-sm text-gray-900">
+                  {selectedPipeline.lastModifiedTime 
+                    ? new Date(selectedPipeline.lastModifiedTime).toLocaleDateString('ko-KR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                      })
+                    : lineageData.pipeline?.lastModifiedTime
+                      ? new Date(lineageData.pipeline.lastModifiedTime).toLocaleDateString('ko-KR', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit'
+                        })
+                      : 'N/A'
+                  }
+                </div>
+              </div>
+            </div>
+
+            {lineageData.pipeline?.arn && (
+              <div className="mt-3 bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">ARN</div>
+                <div className="font-mono text-xs text-gray-700 break-all">
+                  {lineageData.pipeline.arn}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -887,7 +947,7 @@ const Lineage = () => {
                     {/* Step ID */}
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Step ID</div>
-                      <div className="font-medium">{selectedNodeData.id || selectedNodeData.label}</div>
+                      <div className="font-medium break-all">{selectedNodeData.id || selectedNodeData.label}</div>
                     </div>
 
                     {/* Type */}
@@ -896,8 +956,19 @@ const Lineage = () => {
                       <div className="font-medium">{safeValue(selectedNodeData.type || selectedNodeData.stepType)}</div>
                     </div>
 
-                    {/* Status */}
-                    {selectedNodeData.run?.status && (
+                    {/* Status - processNode만 */}
+                    {selectedNodeData.type === 'processNode' && selectedNodeData.run?.status && (
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Status</div>
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(selectedNodeData.run.status)}
+                          <span className="font-medium">{safeValue(selectedNodeData.run.status)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Status - 파이프라인 관점 */}
+                    {viewMode === 'pipeline' && selectedNodeData.run?.status && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Status</div>
                         <div className="flex items-center gap-2">
@@ -911,7 +982,7 @@ const Lineage = () => {
                     {selectedNodeData.run?.jobName && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Job Name</div>
-                        <div className="font-mono text-xs break-all bg-gray-50 p-2 rounded">
+                        <div className="font-mono text-xs break-all">
                           {selectedNodeData.run.jobName}
                         </div>
                       </div>
@@ -921,7 +992,7 @@ const Lineage = () => {
                     {selectedNodeData.run?.jobArn && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Job ARN</div>
-                        <div className="font-mono text-xs break-all bg-gray-50 p-2 rounded text-gray-600">
+                        <div className="font-mono text-xs break-all text-gray-600">
                           {selectedNodeData.run.jobArn}
                         </div>
                       </div>
@@ -929,8 +1000,8 @@ const Lineage = () => {
                   </div>
                 </div>
 
-                {/* Execution Info Section */}
-                {selectedNodeData.run && (
+                {/* Execution Info Section - processNode만 */}
+                {selectedNodeData.type === 'processNode' && selectedNodeData.run && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-1 h-5 bg-blue-600 rounded"></div>
@@ -984,8 +1055,105 @@ const Lineage = () => {
                   </div>
                 )}
 
-                {/* Inputs Section */}
-                {selectedNodeData.inputs && selectedNodeData.inputs.length > 0 && (
+                {/* Execution Info Section - 파이프라인 관점 */}
+                {viewMode === 'pipeline' && selectedNodeData.run && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                      <h4 className="font-bold text-gray-800">Execution Info</h4>
+                    </div>
+                    <div className="space-y-3 pl-3">
+                      {/* Start Time */}
+                      {selectedNodeData.run.startTime && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Start Time</div>
+                          <div className="font-medium">
+                            {new Date(selectedNodeData.run.startTime).toLocaleString('ko-KR', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: false
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* End Time */}
+                      {selectedNodeData.run.endTime && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">End Time</div>
+                          <div className="font-medium">
+                            {new Date(selectedNodeData.run.endTime).toLocaleString('ko-KR', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: false
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Duration */}
+                      {selectedNodeData.run.elapsedSec != null && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Duration</div>
+                          <div className="font-medium">{formatDuration(selectedNodeData.run.elapsedSec)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Data Location Section - dataArtifact만 */}
+                {selectedNodeData.type === 'dataArtifact' && selectedNodeData.uri && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                      <h4 className="font-bold text-gray-800">Data Location</h4>
+                    </div>
+                    <div className="space-y-3 pl-3">
+                      <div className="font-mono text-xs break-all text-blue-600 mb-3">
+                        {selectedNodeData.uri}
+                      </div>
+                      
+                      {selectedNodeData.meta?.s3 && (
+                        <>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Bucket:</div>
+                            <div className="font-medium">{selectedNodeData.meta.s3.bucket}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Region:</div>
+                            <div className="font-medium">{selectedNodeData.meta.s3.region}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Encryption:</div>
+                            <div className="font-medium">{selectedNodeData.meta.s3.encryption}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Versioning:</div>
+                            <div className="font-medium">{selectedNodeData.meta.s3.versioning}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">Public Access:</div>
+                            <div className={`font-medium ${selectedNodeData.meta.s3.publicAccess === 'Blocked' ? 'text-green-600' : 'text-red-600'}`}>
+                              {selectedNodeData.meta.s3.publicAccess}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inputs Section - 파이프라인 관점만 (viewMode === 'pipeline') */}
+                {viewMode === 'pipeline' && selectedNodeData.inputs && selectedNodeData.inputs.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-1 h-5 bg-blue-600 rounded"></div>
@@ -1036,8 +1204,8 @@ const Lineage = () => {
                   </div>
                 )}
 
-                {/* Outputs Section */}
-                {selectedNodeData.outputs && selectedNodeData.outputs.length > 0 && (
+                {/* Outputs Section - 파이프라인 관점만 (viewMode === 'pipeline') */}
+                {viewMode === 'pipeline' && selectedNodeData.outputs && selectedNodeData.outputs.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-1 h-5 bg-blue-600 rounded"></div>
@@ -1084,47 +1252,6 @@ const Lineage = () => {
                           </div>
                         );
                       })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Data Artifact URI (for data nodes) */}
-                {selectedNodeData.uri && selectedNodeData.type === 'dataArtifact' && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
-                      <h4 className="font-bold text-gray-800">Data Location</h4>
-                    </div>
-                    <div className="pl-3">
-                      <div className="font-mono text-xs break-all text-blue-600 bg-blue-50 p-2 rounded mb-2">
-                        {selectedNodeData.uri}
-                      </div>
-                      {selectedNodeData.meta?.s3 && (
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Bucket:</span>
-                            <span className="font-mono">{selectedNodeData.meta.s3.bucket}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Region:</span>
-                            <span>{selectedNodeData.meta.s3.region}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Encryption:</span>
-                            <span>{selectedNodeData.meta.s3.encryption}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Versioning:</span>
-                            <span>{selectedNodeData.meta.s3.versioning}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Public Access:</span>
-                            <span className={selectedNodeData.meta.s3.publicAccess === 'Blocked' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                              {selectedNodeData.meta.s3.publicAccess}
-                            </span>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
