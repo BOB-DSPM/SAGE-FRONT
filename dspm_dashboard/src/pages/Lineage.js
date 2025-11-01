@@ -683,200 +683,142 @@ const Lineage = () => {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      {/* 헤더 영역 */}
-      <div className="bg-white border-b border-gray-200 px-6 shadow-sm flex-shrink-0">
-        {/* 첫 번째 줄: 기존 헤더 */}
-        <div className="h-16 flex items-center">
-          <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
+      {/* 헤더 영역 - 한 줄로 간소화 */}
+      <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm flex-shrink-0">
+        <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
+        
+        {/* 도메인 선택 */}
+        <div className="relative mr-4">
+          <button
+            onClick={() => setShowDomainDropdown(!showDomainDropdown)}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Database className="w-4 h-4" />
+            <span className="text-sm font-medium">{selectedDomain.name}</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
           
-          <div className="relative mr-4">
-            <button
-              onClick={() => setShowDomainDropdown(!showDomainDropdown)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <Database className="w-4 h-4" />
-              <span className="text-sm font-medium">{selectedDomain.name}</span>
-              <ChevronDown className="w-4 h-4" />
-            </button>
-            
-            {showDomainDropdown && (
-              <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+          {showDomainDropdown && (
+            <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div 
+                onClick={() => handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })}
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+              >
+                <div className="font-medium text-sm">전체 도메인</div>
+                <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
+              </div>
+              
+              {domains.map((domain) => (
                 <div 
-                  onClick={() => handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })}
+                  key={domain.id}
+                  onClick={() => handleDomainSelect(domain)}
                   className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
                 >
-                  <div className="font-medium text-sm">전체 도메인</div>
-                  <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
-                </div>
-                
-                {domains.map((domain) => (
-                  <div 
-                    key={domain.id}
-                    onClick={() => handleDomainSelect(domain)}
-                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
-                  >
-                    <div className="font-medium text-sm">{domain.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {domain.region} | {getDomainPipelineCount(domain.id)}개
-                    </div>
-                  </div>
-                ))}
-                
-                <div 
-                  onClick={() => handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })}
-                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
-                >
-                  <div className="font-medium text-sm">태그 없음</div>
+                  <div className="font-medium text-sm">{domain.name}</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {getDomainPipelineCount('__untagged__')}개
+                    {domain.region} | {getDomainPipelineCount(domain.id)}개
                   </div>
+                </div>
+              ))}
+              
+              <div 
+                onClick={() => handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })}
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+              >
+                <div className="font-medium text-sm">태그 없음</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {getDomainPipelineCount('__untagged__')}개
                 </div>
               </div>
-            )}
-          </div>
-
-          {showPipelineList && (
-            <div className="relative">
-              <button
-                onClick={() => setShowDropdown(!showDropdown)}
-                disabled={loadingPipelines}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
-              >
-                {loadingPipelines ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin" />
-                    <span className="text-sm">로딩 중...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-sm font-medium">
-                      {selectedPipeline ? selectedPipeline.name : '파이프라인 선택'}
-                    </span>
-                    <ChevronDown className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-              
-              {showDropdown && !loadingPipelines && (
-                <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-                  {filteredPipelines.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-gray-500">
-                      파이프라인이 없습니다
-                    </div>
-                  ) : (
-                    filteredPipelines.map((pipeline) => (
-                      <div 
-                        key={pipeline.arn}
-                        onClick={() => handlePipelineSelect(pipeline)}
-                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
-                      >
-                        <div className="font-medium text-sm">{pipeline.name}</div>
-                        <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
             </div>
-          )}
-
-          {selectedPipeline && lineageData && (
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => handleViewModeChange('pipeline')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                  viewMode === 'pipeline'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <GitBranch className="w-4 h-4" />
-                <span className="text-sm font-medium">파이프라인 관점</span>
-              </button>
-              <button
-                onClick={() => handleViewModeChange('data')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                  viewMode === 'data'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <Layers className="w-4 h-4" />
-                <span className="text-sm font-medium">데이터 관점</span>
-              </button>
-            </div>
-          )}
-
-          {selectedPipeline && (
-            <button
-              onClick={() => {
-                setSelectedPipeline(null);
-                setShowPipelineList(true);
-                setNodes([]);
-                setEdges([]);
-              }}
-              className="ml-4 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
           )}
         </div>
 
-        {/* 두 번째 줄: 파이프라인 상세 정보 */}
-        {selectedPipeline && lineageData && (
-          <div className="pb-4 pt-2 border-t border-gray-100">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">파이프라인 이름</div>
-                <div className="font-semibold text-sm text-gray-900 truncate" title={lineageData.pipeline?.name || selectedPipeline.name}>
-                  {lineageData.pipeline?.name || selectedPipeline.name}
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">도메인</div>
-                <div className="font-semibold text-sm text-gray-900 truncate" title={lineageData.domain?.name || selectedDomain.name}>
-                  {lineageData.domain?.name || selectedDomain.name}
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">리전</div>
-                <div className="font-semibold text-sm text-gray-900">
-                  {selectedPipeline.region || 'ap-northeast-2'}
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">마지막 수정</div>
-                <div className="font-semibold text-sm text-gray-900">
-                  {selectedPipeline.lastModifiedTime 
-                    ? new Date(selectedPipeline.lastModifiedTime).toLocaleDateString('ko-KR', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit'
-                      })
-                    : lineageData.pipeline?.lastModifiedTime
-                      ? new Date(lineageData.pipeline.lastModifiedTime).toLocaleDateString('ko-KR', {
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit'
-                        })
-                      : 'N/A'
-                  }
-                </div>
-              </div>
-            </div>
-
-            {lineageData.pipeline?.arn && (
-              <div className="mt-3 bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">ARN</div>
-                <div className="font-mono text-xs text-gray-700 break-all">
-                  {lineageData.pipeline.arn}
-                </div>
-              </div>
+        {/* 파이프라인 선택 */}
+        <div className="relative">
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            disabled={loadingPipelines}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+          >
+            {loadingPipelines ? (
+              <>
+                <Loader className="w-4 h-4 animate-spin" />
+                <span className="text-sm">로딩 중...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-sm font-medium max-w-md truncate">
+                  {selectedPipeline ? selectedPipeline.name : '파이프라인 선택'}
+                </span>
+                <ChevronDown className="w-4 h-4" />
+              </>
             )}
+          </button>
+          
+          {showDropdown && !loadingPipelines && (
+            <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+              {filteredPipelines.length === 0 ? (
+                <div className="px-4 py-8 text-center text-gray-500">
+                  파이프라인이 없습니다
+                </div>
+              ) : (
+                filteredPipelines.map((pipeline) => (
+                  <div 
+                    key={pipeline.arn}
+                    onClick={() => handlePipelineSelect(pipeline)}
+                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                  >
+                    <div className="font-medium text-sm">{pipeline.name}</div>
+                    <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 관점 전환 버튼 */}
+        {selectedPipeline && lineageData && (
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => handleViewModeChange('pipeline')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                viewMode === 'pipeline'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <GitBranch className="w-4 h-4" />
+              <span className="text-sm font-medium">파이프라인 관점</span>
+            </button>
+            <button
+              onClick={() => handleViewModeChange('data')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                viewMode === 'data'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span className="text-sm font-medium">데이터 관점</span>
+            </button>
           </div>
+        )}
+
+        {/* 닫기 버튼 */}
+        {selectedPipeline && (
+          <button
+            onClick={() => {
+              setSelectedPipeline(null);
+              setShowPipelineList(true);
+              setNodes([]);
+              setEdges([]);
+            }}
+            className="ml-4 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
         )}
       </div>
 
