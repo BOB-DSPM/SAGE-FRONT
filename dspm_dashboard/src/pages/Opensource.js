@@ -1,6 +1,7 @@
 // src/pages/Opensource.js
 import React, { useEffect, useState, useMemo } from "react";
-import prowlerIcon from "../assets/oss/prowler.svg";
+import { Github } from "lucide-react";
+import prowlerIcon from "../assets/oss/prowler.png";
 
 export default function Opensource() {
   const [items, setItems] = useState([]);
@@ -65,13 +66,24 @@ export default function Opensource() {
             iconMap[it.code]; /* 코드 기반 로컬 매핑 */
 
           return (
-            <a
+            <div
               key={it.code}
-              href={it.homepage}
-              target="_blank"
-              rel="noreferrer"
-              className="block border rounded-xl p-4 hover:shadow-md transition bg-white"
+              className="relative border rounded-xl p-4 bg-white hover:shadow-md transition"
             >
+              {/* 우상단 GitHub 아이콘 버튼만 링크 */}
+              <div className="absolute top-3 right-3">
+                <a
+                  href={it.homepage}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`${it.name} GitHub로 이동`}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border hover:bg-gray-50"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Github className="w-5 h-5" />
+                </a>
+              </div>
+
               <div className="flex items-start gap-3">
                 {/* 아이콘 썸네일 */}
                 <div className="shrink-0">
@@ -90,17 +102,29 @@ export default function Opensource() {
                   <div className="text-lg font-semibold truncate">{it.name}</div>
                   <div className="text-sm text-gray-500 mt-0.5">{it.category}</div>
                   <p className="text-sm mt-2 line-clamp-3">{it.desc}</p>
+
+                  {/* 태그 배지 (있으면 표시) */}
+                  {Array.isArray(it.tags) && it.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {it.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600"
+                        >
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {it.license && (
                     <div className="text-xs text-gray-500 mt-2">
                       License: {it.license}
                     </div>
                   )}
-                  <div className="text-xs text-blue-600 mt-2 break-all">
-                    {it.homepage}
-                  </div>
                 </div>
               </div>
-            </a>
+            </div>
           );
         })}
         {filtered.length === 0 && (
