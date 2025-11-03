@@ -1,39 +1,48 @@
 // src/pages/OpensourceDetail.js
-// (선택 파일) 별도 라우트로 상세를 띄우고 싶을 때 사용.
-// 현재 "가운데 콘텐츠만 전환" 흐름에서는 미사용이지만,
-// 향후 /dashboard/opensource/:code 페이지를 열 계획이면 그대로 두세요.
-
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Play, Clipboard, ClipboardCheck, ArrowLeft } from "lucide-react";
-import { getDetail, simulateUse } from "../services/ossApi";
+import { getDetail, runTool } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
 
 export default function OpensourceDetail() {
   const { code } = useParams();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [simResult, setSimResult] = useState(null);
-  const [form, setForm] = useState({ provider: "aws" });
+
+  // 실행 결과
+  const [runLoading, setRunLoading] = useState(false);
+  const [runRes, setRunRes] = useState(null); // {rc, stdout, stderr, files, command, preinstall, ...}
+  const [form, setForm] = useState({ provider: "aws", pip_install: "true" });
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
 
   const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
+  const iconSrc = iconMap[code];
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError("");
+      setRunRes(null);
       try {
         const d = await getDetail(code);
         setDetail(d);
-
+        // 옵션 기본값 채우기
         const opts = d?.detail?.options || [];
         const base = {};
         for (const o of opts) {
           if (o.default !== undefined) base[o.key] = o.default;
         }
-        setForm((prev) => ({ ...base, ...prev }));
+        // 기본 실행 편의값
+        setForm((prev) => ({
+          ...base,
+          ...prev,
+          provider: base.provider ?? "aws",
+          pip_install: base.pip_install ?? "true",
+          timeout_sec: base.timeout_sec ?? "900",
+          output: base.output ?? "outputs",
+        }));
       } catch (e) {
         setError(String(e));
       } finally {
@@ -46,28 +55,31 @@ export default function OpensourceDetail() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const onSimulate = async () => {
-    setSimResult(null);
+  // ✅ Build command → 실제 실행으로 변경
+  const onRun = async () => {
+    setRunRes(null);
     setCopied(false);
     setError("");
+    setRunLoading(true);
     try {
-      const res = await simulateUse(code, form);
-      setSimResult(res);
+      const res = await runTool(code, form); // 실행 호출
+      setRunRes(res);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setRunLoading(false);
     }
   };
 
   const copyCmd = async () => {
-    if (!simResult?.command) return;
+    const cmd = runRes?.command;
+    if (!cmd) return;
     try {
-      await navigator.clipboard.writeText(simResult.command);
+      await navigator.clipboard.writeText(cmd);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {}
   };
-
-  const iconSrc = iconMap[code];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -90,6 +102,7 @@ export default function OpensourceDetail() {
 
         {!loading && detail && (
           <div className="space-y-6">
+            {/* 헤더 */}
             <div className="flex items-start gap-4 bg-white p-5 rounded-xl shadow-sm">
               <div className="shrink-0">
                 {iconSrc ? (
@@ -115,6 +128,7 @@ export default function OpensourceDetail() {
               </div>
             </div>
 
+            {/* About */}
             {detail?.detail?.about && (
               <div className="bg-white p-5 rounded-xl shadow-sm">
                 <div className="text-base font-medium mb-2">About</div>
@@ -122,6 +136,7 @@ export default function OpensourceDetail() {
               </div>
             )}
 
+            {/* 옵션 폼 */}
             {Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0 && (
               <div className="bg-white p-5 rounded-xl shadow-sm">
                 <div className="text-base font-medium mb-3">Options</div>
@@ -165,7 +180,10 @@ export default function OpensourceDetail() {
                             onChange={(e) =>
                               onChangeField(
                                 key,
-                                e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
+                                e.target.value
+                                  .split(",")
+                                  .map((s) => s.trim())
+                                  .filter(Boolean)
                               )
                             }
                           />
@@ -189,74 +207,129 @@ export default function OpensourceDetail() {
                   })}
                 </div>
 
+                {/* 실행 버튼 */}
                 <div className="flex items-center gap-2 mt-4">
                   <button
-                    onClick={async () => {
-                      setSimResult(null);
-                      setCopied(false);
-                      setError("");
-                      try {
-                        const res = await simulateUse(code, form);
-                        setSimResult(res);
-                      } catch (e) {
-                        setError(String(e));
-                      }
-                    }}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-black text-white hover:opacity-90"
+                    onClick={onRun}
+                    disabled={runLoading}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-black text-white hover:opacity-90 disabled:opacity-60"
                   >
                     <Play className="w-4 h-4" />
-                    Build command
+                    {runLoading ? "Running..." : "Build & Run"}
                   </button>
 
-                  {simResult?.command && (
+                  {runRes?.command && (
                     <button
-                      onClick={async () => {
-                        if (!simResult?.command) return;
-                        try {
-                          await navigator.clipboard.writeText(simResult.command);
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 1500);
-                        } catch {}
-                      }}
+                      onClick={copyCmd}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50"
                     >
                       {copied ? <ClipboardCheck className="w-4 h-4" /> : <Clipboard className="w-4 h-4" />}
-                      {copied ? "Copied!" : "Copy"}
+                      {copied ? "Copied!" : "Copy command"}
                     </button>
                   )}
                 </div>
 
-                {simResult?.error && (
-                  <div className="text-sm text-red-600 mt-3">시뮬레이터 실패: {String(simResult.message || "")}</div>
-                )}
-                {simResult?.command && (
-                  <pre className="text-xs border rounded-lg p-3 bg-gray-50 overflow-x-auto mt-3">
-                    {simResult.command}
-                  </pre>
+                {/* 실행 결과 */}
+                {runRes && (
+                  <div className="mt-4 space-y-4">
+                    <div className="text-sm">
+                      <div><span className="font-medium">Exit code:</span> {runRes.rc}</div>
+                      <div><span className="font-medium">Duration:</span> {runRes.duration_ms} ms</div>
+                      <div><span className="font-medium">Run dir:</span> <code>{runRes.run_dir}</code></div>
+                      <div><span className="font-medium">Output dir:</span> <code>{runRes.output_dir}</code></div>
+                    </div>
+
+                    {/* preinstall (pip) 로그 */}
+                    {runRes.preinstall && (
+                      <div className="border rounded-lg p-3 bg-gray-50">
+                        <div className="text-sm font-medium mb-2">pip install (pre-run)</div>
+                        <div className="text-xs text-gray-700 mb-2">
+                          <div>checked_before.exists: {String(runRes.preinstall.checked_before?.exists)}</div>
+                          <div>installed: {String(runRes.preinstall.installed)}</div>
+                          <div>check_after.exists: {String(runRes.preinstall.check_after?.exists)}</div>
+                        </div>
+                        {runRes.preinstall.pip_log && (
+                          <>
+                            <div className="text-xs text-gray-500">pip cmd: <code>{runRes.preinstall.pip_log.cmd}</code></div>
+                            <pre className="text-xs mt-2 p-2 bg-white border rounded overflow-x-auto">
+{runRes.preinstall.pip_log.stdout}
+                            </pre>
+                            {runRes.preinstall.pip_log.stderr && (
+                              <pre className="text-xs mt-2 p-2 bg-white border rounded overflow-x-auto text-red-600">
+{runRes.preinstall.pip_log.stderr}
+                              </pre>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* stdout / stderr */}
+                    {runRes.command && (
+                      <div className="border rounded-lg p-3 bg-gray-50">
+                        <div className="text-sm font-medium">Command</div>
+                        <pre className="text-xs mt-1 p-2 bg-white border rounded overflow-x-auto">{runRes.command}</pre>
+                      </div>
+                    )}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="border rounded-lg p-3 bg-gray-50">
+                        <div className="text-sm font-medium">STDOUT</div>
+                        <pre className="text-xs mt-1 p-2 bg-white border rounded overflow-x-auto">
+{runRes.stdout || ""}
+                        </pre>
+                      </div>
+                      <div className="border rounded-lg p-3 bg-gray-50">
+                        <div className="text-sm font-medium">STDERR</div>
+                        <pre className="text-xs mt-1 p-2 bg-white border rounded overflow-x-auto text-red-600">
+{runRes.stderr || ""}
+                        </pre>
+                      </div>
+                    </div>
+
+                    {/* 생성 파일 리스트 */}
+                    {Array.isArray(runRes.files) && runRes.files.length > 0 && (
+                      <div className="border rounded-lg p-3 bg-gray-50">
+                        <div className="text-sm font-medium mb-2">Generated files</div>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-xs">
+                            <thead>
+                              <tr className="text-left">
+                                <th className="py-1 pr-4">Path</th>
+                                <th className="py-1 pr-4">Size</th>
+                                <th className="py-1">mtime</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {runRes.files.map((f, idx) => (
+                                <tr key={idx} className="border-t">
+                                  <td className="py-1 pr-4"><code>{f.path}</code></td>
+                                  <td className="py-1 pr-4">{f.size}</td>
+                                  <td className="py-1">{f.mtime}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-2">
+                          파일은 서버 내부 <code>{runRes.output_dir}</code> 하위에 생성됩니다.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
 
+            {/* CLI 예시 */}
             {Array.isArray(detail?.detail?.cli_examples) && detail.detail.cli_examples.length > 0 && (
               <div className="bg-white p-5 rounded-xl shadow-sm">
                 <div className="text-base font-medium mb-2">CLI Examples</div>
                 <ul className="list-disc list-inside text-sm text-gray-800 space-y-1">
                   {detail.detail.cli_examples.map((ex, i) => (
-                    <li key={i}>
-                      <code className="px-1 py-0.5 rounded bg-gray-100">{ex}</code>
-                    </li>
+                    <li key={i}><code className="px-1 py-0.5 rounded bg-gray-100">{ex}</code></li>
                   ))}
                 </ul>
               </div>
-            )}
-
-            {detail?.detail?.use_endpoint && (
-              <div className="text-xs text-gray-500">
-                Use endpoint: <code>{detail.detail.use_endpoint}</code> (백엔드 기준)
-              </div>
-            )}
-            {detail?.detail?.disclaimer && (
-              <div className="text-xs text-gray-500">{detail.detail.disclaimer}</div>
             )}
           </div>
         )}
