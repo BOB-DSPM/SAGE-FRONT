@@ -17,6 +17,7 @@ import ThreatComplianceDetail from './pages/ThreatComplianceDetail';
 
 // ✅ 추가: Opensource 페이지 임포트
 import Opensource from './pages/Opensource';
+import OpensourceDetail from './pages/OpensourceDetail';
 
 // ✅ 추가: 아이콘 임포트 확장 (lucide-react)
 import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3, ClipboardList, FolderSearch, ShieldAlert, Boxes } from 'lucide-react';
@@ -177,6 +178,17 @@ const App = () => {
               </div>
             </div>
           } 
+        />
+        <Route 
+          path="/opensource/:code"
+          element={
+            <div className="min-h-screen flex flex-col bg-gray-50">
+              <Header onLogout={() => setIsLoggedIn(false)} />
+              <div className="flex-1 px-6 py-8">
+                <OpensourceDetail />
+              </div>
+            </div>
+          }
         />
       </Routes>
     </BrowserRouter>
