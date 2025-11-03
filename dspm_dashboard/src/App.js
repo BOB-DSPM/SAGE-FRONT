@@ -27,9 +27,6 @@ const tabs = [
   { id: 'data-target', name: 'Data Collector', icon: FolderSearch },
   { id: 'lineage', name: 'Lineage', icon: GitBranch },
 
-  // ✅ 추가: Opensource 단일 탭
-  { id: 'opensource', name: 'Opensource', icon: Boxes },
-
   // 아코디언 메뉴
   { 
     id: 'audit', 
@@ -42,6 +39,8 @@ const tabs = [
   },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
   { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
+
+  { id: 'opensource', name: 'Opensource', icon: Boxes },
 ];
 
 const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {

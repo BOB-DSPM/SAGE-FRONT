@@ -1,9 +1,19 @@
 // src/pages/Opensource.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { Github } from "lucide-react";
+import prowlerIcon from "../assets/oss/prowler.png";
 
 export default function Opensource() {
   const [items, setItems] = useState([]);
   const [q, setQ] = useState("");
+
+  // 코드 → 아이콘 매핑
+  const iconMap = useMemo(
+    () => ({
+      prowler: prowlerIcon,
+    }),
+    []
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -13,7 +23,7 @@ export default function Opensource() {
         const data = await res.json();
         setItems(data?.items ?? []);
       } catch {
-        // 백엔드가 아직 준비 안 된 경우 더미 데이터
+        // 백엔드 미구현 시 더미
         setItems([
           {
             code: "prowler",
@@ -50,23 +60,73 @@ export default function Opensource() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((it) => (
-          <a
-            key={it.code}
-            href={it.homepage}
-            target="_blank"
-            rel="noreferrer"
-            className="block border rounded-xl p-4 hover:shadow-md transition bg-white"
-          >
-            <div className="text-lg font-semibold">{it.name}</div>
-            <div className="text-sm text-gray-500 mt-1">{it.category}</div>
-            <p className="text-sm mt-2">{it.desc}</p>
-            {it.license && (
-              <div className="text-xs text-gray-500 mt-2">License: {it.license}</div>
-            )}
-            <div className="text-xs text-blue-600 mt-2 break-all">{it.homepage}</div>
-          </a>
-        ))}
+        {filtered.map((it) => {
+          const iconSrc =
+            it.iconSrc /* API에서 내려올 수도 있음 */ ||
+            iconMap[it.code]; /* 코드 기반 로컬 매핑 */
+
+          return (
+            <div
+              key={it.code}
+              className="relative border rounded-xl p-4 bg-white hover:shadow-md transition"
+            >
+              {/* 우상단 GitHub 아이콘 버튼만 링크 */}
+              <div className="absolute top-3 right-3">
+                <a
+                  href={it.homepage}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`${it.name} GitHub로 이동`}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border hover:bg-gray-50"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Github className="w-5 h-5" />
+                </a>
+              </div>
+
+              <div className="flex items-start gap-3">
+                {/* 아이콘 썸네일 */}
+                <div className="shrink-0">
+                  {iconSrc ? (
+                    <img
+                      src={iconSrc}
+                      alt={`${it.name} icon`}
+                      className="w-10 h-10 rounded-md"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-md bg-gray-100 border" />
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold truncate">{it.name}</div>
+                  <div className="text-sm text-gray-500 mt-0.5">{it.category}</div>
+                  <p className="text-sm mt-2 line-clamp-3">{it.desc}</p>
+
+                  {/* 태그 배지 (있으면 표시) */}
+                  {Array.isArray(it.tags) && it.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {it.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600"
+                        >
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {it.license && (
+                    <div className="text-xs text-gray-500 mt-2">
+                      License: {it.license}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
         {filtered.length === 0 && (
           <div className="text-sm text-gray-500">결과 없음</div>
         )}
