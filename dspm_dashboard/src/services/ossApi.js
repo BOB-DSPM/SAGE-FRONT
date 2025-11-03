@@ -45,3 +45,10 @@ export async function simulateUse(code, payload) {
     body: JSON.stringify(payload || {}),
   });
 }
+
+export async function runTool(code, payload) {
+  return _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}/run`, {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
+  });
+}
