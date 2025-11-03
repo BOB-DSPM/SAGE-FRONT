@@ -1,16 +1,33 @@
 // src/services/ossApi.js
-const API_BASE = process.env.REACT_APP_OSS_BASE || "http://211.44.183.248:8800/oss"; // 예: "/oss" 또는 "http://211.44.183.248:8800"
+const API_BASE = process.env.REACT_APP_OSS_BASE || "http://211.44.183.248:8800/oss"; 
+// 프록시를 쓰는 경우: "/oss" 로 설정
 
 async function _fetchJSON(url, options = {}) {
   const res = await fetch(url, {
     headers: { "content-type": "application/json", ...(options.headers || {}) },
     ...options,
   });
+
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  const body = await res.text();
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+    throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
   }
-  return res.json();
+  if (!ct.includes("application/json")) {
+    // 프록시/경로 문제로 HTML(SPA index.html 등)이 올 때를 방지
+    throw new Error(
+      `Expected JSON but got '${ct}'. Check REACT_APP_OSS_BASE / proxy. Snippet: ${body.slice(
+        0,
+        120
+      )}`
+    );
+  }
+  try {
+    return JSON.parse(body);
+  } catch (e) {
+    throw new Error(`Invalid JSON: ${String(e)}. Body head: ${body.slice(0, 120)}`);
+  }
 }
 
 export async function listCatalog(q) {

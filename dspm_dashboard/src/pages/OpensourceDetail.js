@@ -1,7 +1,12 @@
 // src/pages/OpensourceDetail.js
+// (선택 파일) 별도 라우트로 상세를 띄우고 싶을 때 사용.
+// 현재 "가운데 콘텐츠만 전환" 흐름에서는 미사용이지만,
+// 향후 /dashboard/opensource/:code 페이지를 열 계획이면 그대로 두세요.
+
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Play, Clipboard, ClipboardCheck, ArrowLeft } from "lucide-react";
+import { getDetail, simulateUse } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
 
 export default function OpensourceDetail() {
@@ -13,30 +18,16 @@ export default function OpensourceDetail() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
 
-  const API_BASE = process.env.REACT_APP_OSS_BASE || "/oss";
   const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
-
-  async function _fetchJSON(url, options = {}) {
-    const res = await fetch(url, {
-      headers: { "content-type": "application/json", ...(options.headers || {}) },
-      ...options,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
-    }
-    return res.json();
-  }
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError("");
       try {
-        const d = await _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}`);
+        const d = await getDetail(code);
         setDetail(d);
 
-        // 옵션 기본값 초기화
         const opts = d?.detail?.options || [];
         const base = {};
         for (const o of opts) {
@@ -49,7 +40,6 @@ export default function OpensourceDetail() {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
   const onChangeField = (key, value) => {
@@ -61,10 +51,7 @@ export default function OpensourceDetail() {
     setCopied(false);
     setError("");
     try {
-      const res = await _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}/use`, {
-        method: "POST",
-        body: JSON.stringify(form || {}),
-      });
+      const res = await simulateUse(code, form);
       setSimResult(res);
     } catch (e) {
       setError(String(e));
@@ -135,7 +122,6 @@ export default function OpensourceDetail() {
               </div>
             )}
 
-            {/* 옵션 폼 */}
             {Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0 && (
               <div className="bg-white p-5 rounded-xl shadow-sm">
                 <div className="text-base font-medium mb-3">Options</div>
@@ -157,13 +143,9 @@ export default function OpensourceDetail() {
                             value={form[key] ?? opt.default ?? ""}
                             onChange={(e) => onChangeField(key, e.target.value)}
                           >
-                            <option value="" disabled>
-                              선택…
-                            </option>
+                            <option value="" disabled>선택…</option>
                             {opt.values?.map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
+                              <option key={v} value={v}>{v}</option>
                             ))}
                           </select>
                           {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
@@ -183,10 +165,7 @@ export default function OpensourceDetail() {
                             onChange={(e) =>
                               onChangeField(
                                 key,
-                                e.target.value
-                                  .split(",")
-                                  .map((s) => s.trim())
-                                  .filter(Boolean)
+                                e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
                               )
                             }
                           />
@@ -212,7 +191,17 @@ export default function OpensourceDetail() {
 
                 <div className="flex items-center gap-2 mt-4">
                   <button
-                    onClick={onSimulate}
+                    onClick={async () => {
+                      setSimResult(null);
+                      setCopied(false);
+                      setError("");
+                      try {
+                        const res = await simulateUse(code, form);
+                        setSimResult(res);
+                      } catch (e) {
+                        setError(String(e));
+                      }
+                    }}
                     className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-black text-white hover:opacity-90"
                   >
                     <Play className="w-4 h-4" />
@@ -221,7 +210,14 @@ export default function OpensourceDetail() {
 
                   {simResult?.command && (
                     <button
-                      onClick={copyCmd}
+                      onClick={async () => {
+                        if (!simResult?.command) return;
+                        try {
+                          await navigator.clipboard.writeText(simResult.command);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1500);
+                        } catch {}
+                      }}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50"
                     >
                       {copied ? <ClipboardCheck className="w-4 h-4" /> : <Clipboard className="w-4 h-4" />}
@@ -230,7 +226,6 @@ export default function OpensourceDetail() {
                   )}
                 </div>
 
-                {/* 결과 */}
                 {simResult?.error && (
                   <div className="text-sm text-red-600 mt-3">시뮬레이터 실패: {String(simResult.message || "")}</div>
                 )}
@@ -242,7 +237,6 @@ export default function OpensourceDetail() {
               </div>
             )}
 
-            {/* CLI 예시 */}
             {Array.isArray(detail?.detail?.cli_examples) && detail.detail.cli_examples.length > 0 && (
               <div className="bg-white p-5 rounded-xl shadow-sm">
                 <div className="text-base font-medium mb-2">CLI Examples</div>
@@ -256,7 +250,6 @@ export default function OpensourceDetail() {
               </div>
             )}
 
-            {/* 안내 */}
             {detail?.detail?.use_endpoint && (
               <div className="text-xs text-gray-500">
                 Use endpoint: <code>{detail.detail.use_endpoint}</code> (백엔드 기준)

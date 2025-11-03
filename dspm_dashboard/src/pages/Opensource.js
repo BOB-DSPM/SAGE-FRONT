@@ -1,57 +1,38 @@
 // src/pages/Opensource.js
 import React, { useEffect, useMemo, useState } from "react";
 import { Github, ArrowLeft, Play, Clipboard, ClipboardCheck } from "lucide-react";
+import { listCatalog, getDetail, simulateUse } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
 
 export default function Opensource() {
-  // 공통 상태
+  // 목록/검색
   const [items, setItems] = useState([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 상세/시뮬레이터 상태 (선택 시 가운데 콘텐츠가 상세로 전환)
-  const [selected, setSelected] = useState(null); // {code, name, ...} (리스트 아이템)
-  const [detail, setDetail] = useState(null);     // 상세 API 응답
+  // 상세/시뮬레이터
+  const [selected, setSelected] = useState(null); // 클릭한 아이템(요약)
+  const [detail, setDetail] = useState(null);     // 상세 응답
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const [form, setForm] = useState({ provider: "aws" });
-  const [simResult, setSimResult] = useState(null);
+  const [form, setForm] = useState({ provider: "aws" }); // 옵션 폼
+  const [simResult, setSimResult] = useState(null);      // 시뮬레이터 결과
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
 
   // 아이콘 매핑
-  const iconMap = useMemo(
-    () => ({
-      prowler: prowlerIcon,
-    }),
-    []
-  );
-
-  // 백엔드 베이스 (리버스 프록시/Nginx에서 /oss → 8800)
-  const API_BASE = process.env.REACT_APP_OSS_BASE || "/oss";
-
-  // 공용 fetch JSON
-  const _fetchJSON = async (url, options = {}) => {
-    const res = await fetch(url, {
-      headers: { "content-type": "application/json", ...(options.headers || {}) },
-      ...options,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
-    }
-    return res.json();
-  };
+  const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
 
   // 카탈로그 로드
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const data = await _fetchJSON(`${API_BASE}/api/oss`);
+        const data = await listCatalog();
         setItems(data?.items ?? []);
-      } catch {
+      } catch (e) {
         // 백엔드 없을 때 더미
+        console.warn("[Opensource] catalog fallback:", e);
         setItems([
           {
             code: "prowler",
@@ -67,21 +48,7 @@ export default function Opensource() {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 상세 호출
-  const fetchDetail = async (code) => {
-    return _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}`);
-  };
-
-  // 시뮬레이터 호출
-  const simulateUse = async (code, payload) => {
-    return _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}/use`, {
-      method: "POST",
-      body: JSON.stringify(payload || {}),
-    });
-  };
 
   // 검색 필터
   const filtered = items.filter((x) =>
@@ -90,7 +57,7 @@ export default function Opensource() {
       .some((v) => v.toLowerCase().includes(q.toLowerCase()))
   );
 
-  // 카드 클릭 → 가운데 콘텐츠를 상세로 전환
+  // 카드 클릭 → 가운데 영역을 상세 화면으로 전환
   const onCardClick = async (it) => {
     setSelected(it);
     setDetail(null);
@@ -101,9 +68,10 @@ export default function Opensource() {
     setDetailLoading(true);
 
     try {
-      const d = await fetchDetail(it.code);
+      const d = await getDetail(it.code);
       setDetail(d);
-      // 옵션 기본값 form에 반영
+
+      // 옵션 기본값을 form에 반영
       const opts = d?.detail?.options || [];
       const base = {};
       for (const o of opts) {
@@ -117,7 +85,7 @@ export default function Opensource() {
     }
   };
 
-  // 상세에서 목록으로 복귀
+  // 목록으로 복귀
   const backToList = () => {
     setSelected(null);
     setDetail(null);
@@ -126,10 +94,12 @@ export default function Opensource() {
     setError("");
   };
 
+  // 옵션 변경
   const onChangeField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  // 커맨드 생성(시뮬레이터)
   const onSimulate = async () => {
     if (!selected) return;
     setSimResult(null);
@@ -143,6 +113,7 @@ export default function Opensource() {
     }
   };
 
+  // 복사
   const copyCmd = async () => {
     if (!simResult?.command) return;
     try {
@@ -152,11 +123,9 @@ export default function Opensource() {
     } catch {}
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // 렌더링
-  // ─────────────────────────────────────────────────────────────
+  // ───────── 렌더링 ─────────
 
-  // 1) 상세 화면 (선택된 경우: 가운데 콘텐츠 전체 교체)
+  // (1) 상세 화면
   if (selected) {
     const iconSrc = iconMap[selected.code];
     return (
@@ -177,7 +146,7 @@ export default function Opensource() {
 
         {!detailLoading && detail && (
           <div className="space-y-6">
-            {/* 헤더 블록 */}
+            {/* 헤더 */}
             <div className="flex items-start gap-4 bg-white p-5 rounded-xl border">
               <div className="shrink-0">
                 {iconSrc ? (
@@ -232,6 +201,7 @@ export default function Opensource() {
                   {detail.detail.options.map((opt) => {
                     const key = opt.key;
                     const visibleIf = opt.visible_if || null;
+
                     if (visibleIf) {
                       const [vk, vv] = Object.entries(visibleIf)[0];
                       if (form[vk] !== vv) return null;
@@ -246,13 +216,9 @@ export default function Opensource() {
                             value={form[key] ?? opt.default ?? ""}
                             onChange={(e) => onChangeField(key, e.target.value)}
                           >
-                            <option value="" disabled>
-                              선택…
-                            </option>
+                            <option value="" disabled>선택…</option>
                             {opt.values?.map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
+                              <option key={v} value={v}>{v}</option>
                             ))}
                           </select>
                           {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
@@ -272,10 +238,7 @@ export default function Opensource() {
                             onChange={(e) =>
                               onChangeField(
                                 key,
-                                e.target.value
-                                  .split(",")
-                                  .map((s) => s.trim())
-                                  .filter(Boolean)
+                                e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
                               )
                             }
                           />
@@ -284,6 +247,7 @@ export default function Opensource() {
                       );
                     }
 
+                    // string
                     return (
                       <div key={key} className="flex flex-col">
                         <label className="text-sm text-gray-700">{opt.label}</label>
@@ -362,7 +326,7 @@ export default function Opensource() {
     );
   }
 
-  // 2) 목록 화면 (기본: 가운데 콘텐츠에 카드 그리드)
+  // (2) 목록 화면
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Opensource</h1>
@@ -379,9 +343,7 @@ export default function Opensource() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((it) => {
-          const iconSrc =
-            it.iconSrc /* API에서 내려올 수도 있음 */ ||
-            iconMap[it.code]; /* 코드 기반 로컬 매핑 */
+          const iconSrc = it.iconSrc || iconMap[it.code];
 
           return (
             <button
@@ -407,11 +369,7 @@ export default function Opensource() {
                 {/* 아이콘 썸네일 */}
                 <div className="shrink-0">
                   {iconSrc ? (
-                    <img
-                      src={iconSrc}
-                      alt={`${it.name} icon`}
-                      className="w-10 h-10 rounded-md"
-                    />
+                    <img src={iconSrc} alt={`${it.name} icon`} className="w-10 h-10 rounded-md" />
                   ) : (
                     <div className="w-10 h-10 rounded-md bg-gray-100 border" />
                   )}
@@ -426,10 +384,7 @@ export default function Opensource() {
                   {Array.isArray(it.tags) && it.tags.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
                       {it.tags.map((t) => (
-                        <span
-                          key={t}
-                          className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600"
-                        >
+                        <span key={t} className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
                           #{t}
                         </span>
                       ))}
@@ -444,6 +399,7 @@ export default function Opensource() {
             </button>
           );
         })}
+
         {!loading && filtered.length === 0 && (
           <div className="text-sm text-gray-500">결과 없음</div>
         )}
