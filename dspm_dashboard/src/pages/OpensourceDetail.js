@@ -606,7 +606,7 @@ export default function OpensourceDetail() {
                   </div>
                 </div>
               )}
-            </div>
+            
 
             {/* CLI 예시 */}
             {Array.isArray(detail?.detail?.cli_examples) &&
