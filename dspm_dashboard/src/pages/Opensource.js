@@ -1,6 +1,4 @@
-# =========================
-# file: src/pages/Opensource.js
-# =========================
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Github, ArrowLeft, Play, Clipboard, ClipboardCheck } from "lucide-react";
 import { listCatalog, getDetail, simulateUse } from "../services/ossApi";
