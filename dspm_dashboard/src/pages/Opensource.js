@@ -4,6 +4,9 @@ import { Github, ArrowLeft, Play, Clipboard, ClipboardCheck } from "lucide-react
 import { listCatalog, getDetail, simulateUse } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
 
+const getDefaultDir = () =>
+  localStorage.getItem("oss.directory") || process.env.REACT_APP_OSS_WORKDIR || "/workspace";
+
 export default function Opensource() {
   // 목록/검색
   const [items, setItems] = useState([]);
@@ -15,7 +18,7 @@ export default function Opensource() {
   const [detail, setDetail] = useState(null);     // 상세 응답
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const [form, setForm] = useState({ provider: "aws" }); // 옵션 폼
+  const [form, setForm] = useState({ provider: "aws", directory: getDefaultDir() }); // 옵션 폼
   const [simResult, setSimResult] = useState(null);      // 시뮬레이터 결과
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
@@ -50,6 +53,11 @@ export default function Opensource() {
     })();
   }, []);
 
+  // directory 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (form?.directory) localStorage.setItem("oss.directory", form.directory);
+  }, [form?.directory]);
+
   // 검색 필터
   const filtered = items.filter((x) =>
     [x.name, x.code, x.category, x.desc]
@@ -63,7 +71,7 @@ export default function Opensource() {
     setDetail(null);
     setSimResult(null);
     setCopied(false);
-    setForm({ provider: "aws" });
+    setForm({ provider: "aws", directory: getDefaultDir() });
     setError("");
     setDetailLoading(true);
 
@@ -105,6 +113,12 @@ export default function Opensource() {
     setSimResult(null);
     setCopied(false);
     setError("");
+
+    if (!form.directory || String(form.directory).trim().length === 0) {
+      setError('Invalid options: "directory" is required');
+      return;
+    }
+
     try {
       const res = await simulateUse(selected.code, form);
       setSimResult(res);
@@ -128,6 +142,10 @@ export default function Opensource() {
   // (1) 상세 화면
   if (selected) {
     const iconSrc = iconMap[selected.code];
+    const hasDirectoryOption = Array.isArray(detail?.detail?.options)
+      ? detail.detail.options.some((o) => o.key === "directory")
+      : false;
+
     return (
       <div className="p-6">
         <div className="flex items-center justify-between mb-4">
@@ -192,6 +210,22 @@ export default function Opensource() {
                 <p className="text-sm text-gray-700">{detail.detail.about}</p>
               </div>
             )}
+
+            {/* 항상 노출되는 Working Directory */}
+            <div className="bg-white p-5 rounded-xl border">
+              <div className="text-base font-medium mb-2">Working Directory</div>
+              <input
+                className="border rounded-lg px-3 py-2 w-full"
+                placeholder="/workspace (컨테이너 내부 또는 서버 기준 경로)"
+                value={form.directory || ""}
+                onChange={(e) => onChangeField("directory", e.target.value)}
+              />
+              {!hasDirectoryOption && (
+                <p className="text-xs text-gray-500 mt-1">
+                  * 이 도구는 실행 시 <code>directory</code> 옵션이 필수입니다.
+                </p>
+              )}
+            </div>
 
             {/* Options + Simulator */}
             {Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0 && (

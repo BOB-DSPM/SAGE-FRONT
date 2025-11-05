@@ -14,6 +14,8 @@ import prowlerIcon from "../assets/oss/prowler.png";
 
 // 프록시(Nginx) 사용 시 "/oss", 절대주소 사용할 땐 REACT_APP_OSS_BASE에 설정
 const API_BASE = process.env.REACT_APP_OSS_BASE || "/oss";
+const getDefaultDir = () =>
+  localStorage.getItem("oss.directory") || process.env.REACT_APP_OSS_WORKDIR || "/workspace";
 
 export default function OpensourceDetail() {
   const { code } = useParams();
@@ -29,6 +31,7 @@ export default function OpensourceDetail() {
     pip_install: "true",
     timeout_sec: "900",
     output: "outputs",
+    directory: getDefaultDir(),
   });
 
   // 일괄 실행(완료 후 한번에 결과 받기)
@@ -49,6 +52,11 @@ export default function OpensourceDetail() {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [liveLog]);
+
+  // directory 변경 시 localStorage 반영
+  useEffect(() => {
+    if (form?.directory) localStorage.setItem("oss.directory", form.directory);
+  }, [form?.directory]);
 
   // 아이콘 매핑
   const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
@@ -77,6 +85,7 @@ export default function OpensourceDetail() {
           pip_install: base.pip_install ?? "true",
           timeout_sec: base.timeout_sec ?? "900",
           output: base.output ?? "outputs",
+          directory: prev.directory || getDefaultDir(),
         }));
       } catch (e) {
         setError(String(e));
@@ -95,6 +104,12 @@ export default function OpensourceDetail() {
     setRunRes(null);
     setCopied(false);
     setError("");
+
+    if (!form.directory || String(form.directory).trim().length === 0) {
+      setError('Invalid options: "directory" is required');
+      return;
+    }
+
     setRunLoading(true);
     try {
       const res = await runTool(code, form);
@@ -122,6 +137,13 @@ export default function OpensourceDetail() {
     setLiveLog("");
     setStreamErr("");
     setSummary(null);
+
+    if (!form.directory || String(form.directory).trim().length === 0) {
+      setStreamErr('Invalid options: "directory" is required');
+      setLiveRunning(false);
+      return;
+    }
+
     try {
       const res = await fetch(
         `${API_BASE}/api/oss/${encodeURIComponent(code)}/run/stream`,
@@ -133,7 +155,8 @@ export default function OpensourceDetail() {
       );
 
       if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
+        const text = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
       }
 
       const reader = res.body.getReader();
@@ -150,7 +173,6 @@ export default function OpensourceDetail() {
           // summary 후보(JSON 한 줄)를 파싱해 상태 갱신
           // 요약은 서버가 마지막에 {"summary": {...}}로 한 번 내려줌
           buf += chunk;
-          // 가장 마지막 JSON 객체를 찾기 위해 단순 휴리스틱
           const lastBrace = buf.lastIndexOf("\n{");
           if (lastBrace !== -1) {
             const tail = buf.slice(lastBrace + 1).trim();
@@ -160,7 +182,6 @@ export default function OpensourceDetail() {
                 setSummary(parsed.summary);
               }
             } catch {
-              // 아직 덜 들어온 중간 조각이면 무시
               /* noop */
             }
           }
@@ -185,6 +206,10 @@ export default function OpensourceDetail() {
   const hasOptions =
     Array.isArray(detail?.detail?.options) &&
     detail.detail.options.length > 0;
+
+  const hasDirectoryOption = Array.isArray(detail?.detail?.options)
+    ? detail.detail.options.some((o) => o.key === "directory")
+    : false;
 
   // ========================= 렌더 =========================
   return (
@@ -252,6 +277,22 @@ export default function OpensourceDetail() {
                 <p className="text-sm text-gray-700">{detail.detail.about}</p>
               </div>
             )}
+
+            {/* 항상 노출되는 Working Directory */}
+            <div className="bg-white p-5 rounded-xl shadow-sm">
+              <div className="text-base font-medium mb-2">Working Directory</div>
+              <input
+                className="border rounded-lg px-3 py-2 w-full"
+                placeholder="/workspace (컨테이너 내부 또는 서버 기준 경로)"
+                value={form.directory || ""}
+                onChange={(e) => onChangeField("directory", e.target.value)}
+              />
+              {!hasDirectoryOption && (
+                <p className="text-xs text-gray-500 mt-1">
+                  * 이 도구는 실행 시 <code>directory</code> 옵션이 필수입니다.
+                </p>
+              )}
+            </div>
 
             {/* 옵션 폼 (옵션이 있을 때만) */}
             {hasOptions && (
