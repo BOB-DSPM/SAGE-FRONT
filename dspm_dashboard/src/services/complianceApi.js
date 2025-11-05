@@ -1,5 +1,5 @@
 // src/services/complianceApi.js
-const AUDIT_API_BASE = 'http://43.200.30.132:8103';
+const AUDIT_API_BASE = 'http://43.202.228.52:8103';
 
 export const complianceApi = {
   // 세션 존재 여부 확인 (GET /audit/session/{session_id})

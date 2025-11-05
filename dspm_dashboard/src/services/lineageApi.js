@@ -1,5 +1,5 @@
 // src/services/lineageApi.js
-const LINEAGE_API_BASE = 'http://43.200.30.132:8300';
+const LINEAGE_API_BASE = 'http://43.202.228.52:8300';
 
 export const lineageApi = {
   // SageMaker 파이프라인 목록 조회 (새 API)

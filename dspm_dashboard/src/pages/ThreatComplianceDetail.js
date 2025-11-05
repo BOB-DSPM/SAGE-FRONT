@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://43.200.30.132:8003';
+const API_BASE_URL = 'http://43.202.228.52:8003';
 
 const ThreatComplianceDetail = () => {
   const { reqId } = useParams();

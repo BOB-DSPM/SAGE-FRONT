@@ -1,6 +1,6 @@
 // src/services/aegisApi.js
-const AEGIS_API_BASE = 'http://43.200.30.132:8400';
-const COLLECTOR_API_BASE = 'http://43.200.30.132:8000';
+const AEGIS_API_BASE = 'http://43.202.228.52:8400';
+const COLLECTOR_API_BASE = 'http://43.202.228.52:8000';
 
 export const aegisApi = {
   // 데이터 수집만 트리거 (파일 저장)

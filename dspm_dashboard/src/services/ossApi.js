@@ -1,5 +1,5 @@
 // src/services/ossApi.js
-const API_BASE = process.env.REACT_APP_OSS_BASE || "http://43.200.30.132:8800/oss"; // 예: "/oss" 프록시 or 절대주소
+const API_BASE = process.env.REACT_APP_OSS_BASE || "http://43.202.228.52:8800/oss"; // 예: "/oss" 프록시 or 절대주소
 
 async function _fetchJSON(url, options = {}) {
   const res = await fetch(url, {

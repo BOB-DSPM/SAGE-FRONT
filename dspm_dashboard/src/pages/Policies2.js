@@ -13,7 +13,7 @@ import iso42001Logo from './logo/iso42001.png';
 import soc2Logo from './logo/soc2.png';
 import pipaLogo from './logo/pipa.png';
 
-const API_BASE = 'http://211.44.183.248:8003';
+const API_BASE = 'http://43.202.228.52:8003';
 
 // ============= 세션 키 구분 =============
 const SESSION_KEY_PREFIX = 'compliance_session_';
