@@ -4,7 +4,7 @@ import { ClipboardList, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X
 import { sessionService } from '../services/sessionService';
 import { complianceApi } from '../services/complianceApi';
 
-const API_BASE = 'http://211.44.183.248:8003';
+const API_BASE = 'http://43.200.30.132:8003';
 
 const ThreatCompliance = () => {
   const [frameworks, setFrameworks] = useState([]);
