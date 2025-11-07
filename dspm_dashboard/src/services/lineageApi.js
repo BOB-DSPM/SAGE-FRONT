@@ -60,4 +60,11 @@ export const lineageApi = {
 
     return await response.json();
   },
+
+  async getSchemaLayer(pipeline, region = 'ap-northeast-2') {
+    const url = `${LINEAGE_API_BASE}/lineage/schema?pipeline=${encodeURIComponent(pipeline)}&region=${region}`;
+    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) throw new Error(`Failed to fetch schema layer: ${res.status}`);
+    return res.json();
+  },
 };

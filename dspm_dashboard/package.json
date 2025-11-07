@@ -11,6 +11,7 @@
     "axios": "^1.12.2",
     "dagre": "^0.8.5",
     "lucide-react": "^0.544.0",
+    "package.json": "^2.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.3",

@@ -9,7 +9,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
-import { X, Database, Clock, CheckCircle, XCircle, Loader, RefreshCw, ChevronDown, GitBranch, Layers } from 'lucide-react';
+import { X, Database, Clock, CheckCircle, XCircle, Loader, RefreshCw, ChevronDown, GitBranch, Layers, Filter, CheckSquare, Square } from 'lucide-react';
 import { useLineage } from '../hooks/useLineage';
 
 const Lineage = () => {
@@ -22,6 +22,10 @@ const Lineage = () => {
     domains = [],
     loadingPipelines,
     loadPipelines,
+    // schema
+    schemaEnabled, toggleSchema, schemaLayer, schemaLoading, schemaError,
+    schemaSelection, setUnit, toggleSchemaItem, clearSelection,
+    availableByUnit, getSelectedArtifactIds, loadSchemaLayer,
   } = useLineage();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -35,6 +39,9 @@ const Lineage = () => {
   const [showDomainDropdown, setShowDomainDropdown] = useState(false); 
   const [selectedDomain, setSelectedDomain] = useState({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' });
   const [viewMode, setViewMode] = useState('pipeline');
+
+  // 스키마 선택 패널
+  const [openSchemaPanel, setOpenSchemaPanel] = useState(false);
 
   const getDomainPipelineCount = (domainId) => {
     if (domainId === '__untagged__') {
@@ -622,23 +629,74 @@ const Lineage = () => {
     }
   }, []);
 
-  useEffect(() => {
-    if (lineageData) {
-      console.log('Lineage data changed, view mode:', viewMode);
-      if (viewMode === 'pipeline') {
-        const { nodes: pipelineNodes, edges: pipelineEdges } = buildPipelineGraph(lineageData);
-        setNodes(pipelineNodes);
-        setEdges(pipelineEdges);
-      } else {
-        const { nodes: dataNodes, edges: dataEdges } = buildDataGraph(lineageData);
-        setNodes(dataNodes);
-        setEdges(dataEdges);
-      }
-      setSelectedNode(null);
-      setShowPanel(false);
-      setSelectedNodeData(null);
+  // ---- 스키마 ‘선택 기반’ 필터 적용 ----
+  const applySchemaSelectionToGraph = useCallback((graphNodes, graphEdges) => {
+    if (!schemaEnabled || !schemaLayer) return { nodes: graphNodes, edges: graphEdges };
+
+    // 선택된 스키마 없으면 그대로
+    if (!schemaSelection.selected || schemaSelection.selected.size === 0) {
+      return { nodes: graphNodes, edges: graphEdges };
     }
-  }, [lineageData, viewMode, buildPipelineGraph, buildDataGraph, setNodes, setEdges]);
+
+    // 선택 -> 연결된 artifactIds
+    const matchedArtifactIds = getSelectedArtifactIds();
+    const isArtifactNode = (id) => id.startsWith('data:');
+
+    // 매칭된 데이터 노드와 직접 연결된 프로세스 노드만 선명
+    const visibleNodeIds = new Set();
+    graphNodes.forEach(n => {
+      if (isArtifactNode(n.id) && matchedArtifactIds.has(n.id)) {
+        visibleNodeIds.add(n.id);
+        graphEdges.forEach(e => {
+          if (e.source === n.id) visibleNodeIds.add(e.target);
+          if (e.target === n.id) visibleNodeIds.add(e.source);
+        });
+      }
+    });
+
+    const styledNodes = graphNodes.map(n => {
+      const matched = visibleNodeIds.has(n.id);
+      const highlight = matched && isArtifactNode(n.id);
+      return {
+        ...n,
+        style: {
+          ...n.style,
+          opacity: matched ? 1 : 0.15,
+          border: (highlight ? '3px solid #8b5cf6' : n.style?.border),
+        }
+      };
+    });
+
+    const styledEdges = graphEdges.map(e => {
+      const vis = visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target);
+      return { ...e, style: { ...e.style, opacity: vis ? 1 : 0.1 } };
+    });
+
+    return { nodes: styledNodes, edges: styledEdges };
+  }, [schemaEnabled, schemaLayer, schemaSelection.selected, getSelectedArtifactIds]);
+  
+
+  // 라인리지 변경 → 그래프 생성
+  useEffect(() => {
+    if (!lineageData) return;
+    if (viewMode === 'pipeline') {
+      const { nodes: n, edges: e } = buildPipelineGraph(lineageData);
+      setNodes(n); setEdges(e);
+    } else {
+      const { nodes: n0, edges: e0 } = buildDataGraph(lineageData);
+      const { nodes: n, edges: e } = applySchemaSelectionToGraph(n0, e0);
+      setNodes(n); setEdges(e);
+    }
+    setSelectedNode(null); setShowPanel(false); setSelectedNodeData(null);
+  }, [lineageData, viewMode, buildPipelineGraph, buildDataGraph, applySchemaSelectionToGraph]);
+
+  // 스키마 선택/토글 변화 시 재적용(데이터 관점일 때만)
+  useEffect(() => {
+    if (!lineageData || viewMode !== 'data') return;
+    const { nodes: n0, edges: e0 } = buildDataGraph(lineageData);
+    const { nodes: n, edges: e } = applySchemaSelectionToGraph(n0, e0);
+    setNodes(n); setEdges(e);
+  }, [schemaEnabled, schemaLayer, schemaSelection.selected, viewMode, lineageData, buildDataGraph, applySchemaSelectionToGraph]);
 
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
@@ -647,22 +705,14 @@ const Lineage = () => {
     setSelectedNodeData(null);
   };
 
+  // 파이프라인 선택/로드
   const handlePipelineSelect = useCallback(async (pipeline) => {
-    setSelectedPipeline(pipeline);
-    setShowPipelineList(false);
-    setShowDropdown(false);
-
+    setSelectedPipeline(pipeline); setShowDropdown(false);
     const region = pipeline.region || 'ap-northeast-2';
-    let domain = null;
-    
-    if (pipeline.matchedDomain && pipeline.matchedDomain.domainName) {
-      domain = pipeline.matchedDomain.domainName;
-    } else if (pipeline.tags && pipeline.tags['DomainName']) {
-      domain = pipeline.tags['DomainName'];
-    }
-
+    const domain = pipeline.matchedDomain?.domainName || pipeline.tags?.DomainName || null;
     await loadLineage(pipeline.name, region, domain);
-  }, [loadLineage]);
+    if (schemaEnabled) { try { await loadSchemaLayer(pipeline.name, region); } catch {} }
+  }, [loadLineage, loadSchemaLayer, schemaEnabled]);
 
   useEffect(() => {
     loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
@@ -803,6 +853,39 @@ const Lineage = () => {
               <Layers className="w-4 h-4" />
               <span className="text-sm font-medium">데이터 관점</span>
             </button>
+
+            {/* ★ 데이터 관점에서만 보이는 스키마 토글/검색 */}
+            {viewMode==='data' && (
+              <div className="flex items-center gap-2 ml-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4"
+                    checked={schemaEnabled}
+                    onChange={async (e)=>{
+                      const on = e.target.checked;
+                      toggleSchema(on);
+                      if (on && selectedPipeline) {
+                        try { await loadSchemaLayer(selectedPipeline.name, selectedPipeline.region || 'ap-northeast-2'); } catch {}
+                      } else {
+                        setOpenSchemaPanel(false);
+                      }
+                    }}
+                  />
+                  <span>스키마 보기</span>
+                </label>
+
+                <button
+                  disabled={!schemaEnabled || !schemaLayer}
+                  onClick={()=>setOpenSchemaPanel(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  <Filter className="w-4 h-4" />
+                  <span className="text-sm">스키마 선택</span>
+                </button>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -1201,6 +1284,69 @@ const Lineage = () => {
             </div>
           </div>
         )}
+
+        {/* ★ 스키마 선택 패널 (토글/체크박스) */}
+        {openSchemaPanel && schemaEnabled && schemaLayer && (
+          <div className="absolute right-0 top-0 bottom-0 w-[420px] bg-white border-l border-gray-200 shadow-xl z-30 flex flex-col">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">스키마 선택</div>
+              <button className="p-2 rounded hover:bg-gray-100" onClick={()=>setOpenSchemaPanel(false)}><X className="w-5 h-5" /></button>
+            </div>
+
+            {/* 유닛 탭 */}
+            <div className="px-4 py-3 flex gap-2 border-b">
+              {[
+                { k:'table', label:'테이블' },
+                { k:'column', label:'컬럼' },
+                { k:'featureGroup', label:'피처그룹' },
+                { k:'feature', label:'피처' },
+              ].map(t=>(
+                <button
+                  key={t.k}
+                  onClick={()=>setUnit(t.k)}
+                  className={`px-3 py-1.5 rounded-lg text-sm ${schemaSelection.unit===t.k ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 리스트 */}
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {availableByUnit.length === 0 ? (
+                <div className="text-center text-gray-500 mt-10">항목이 없습니다</div>
+              ) : availableByUnit.map(item => {
+                const checked = schemaSelection.selected.has(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    onClick={()=>toggleSchemaItem(item.id)}
+                    className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer hover:bg-gray-50 ${checked ? 'bg-indigo-50' : ''}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{item.name || item.id}</div>
+                      <div className="text-xs text-gray-500">
+                        {item.version ? `v${item.version}` : '—'}
+                        {item.pii_tag ? ` · PII:${item.pii_tag}` : ''}
+                        {item.changed ? ' · 변경' : ''}
+                      </div>
+                    </div>
+                    <div className="ml-2 text-indigo-600">
+                      {checked ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 하단 버튼 */}
+            <div className="px-4 py-3 border-t flex items-center justify-between">
+              <button onClick={clearSelection} className="px-3 py-2 text-sm text-gray-700 rounded hover:bg-gray-100">선택 해제</button>
+              <div className="text-xs text-gray-500">선택 {schemaSelection.selected.size}개</div>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* 하단 통계 영역 - 128px 고정 */}
