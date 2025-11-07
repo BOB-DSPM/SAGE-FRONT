@@ -1,70 +1,96 @@
 // src/services/lineageApi.js
-const LINEAGE_API_BASE = 'http://43.202.228.52:8300';
+const BASE_URL =
+  process.env.REACT_APP_LINEAGE_API_BASE || "http://43.202.228.52:8300";
 
-export const lineageApi = {
-  // SageMaker 파이프라인 목록 조회 (새 API)
-  async getPipelines(options = {}) {
-    const {
-      regions = 'ap-northeast-2',
-      includeLatestExec = false,
-      name = null,
-      domainName = null,
-      domainId = null,
-    } = options;
+async function httpGet(path, params = {}) {
+  const url = new URL(BASE_URL + path);
 
-    let url = `${LINEAGE_API_BASE}/sagemaker/pipelines?regions=${regions}&includeLatestExec=${includeLatestExec}`;
-    
-    if (name) url += `&name=${encodeURIComponent(name)}`;
-    if (domainName) url += `&domainName=${encodeURIComponent(domainName)}`;
-    if (domainId) url += `&domainId=${encodeURIComponent(domainId)}`;
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "") return;
+    url.searchParams.set(k, String(v));
+  });
 
-    const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
-    });
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API ${path} ${res.status}: ${text}`);
+  }
+  return res.json();
+}
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch pipelines: ${response.status}`);
-    }
+/** 도메인 기준 라인리지 */
+export async function getLineageByDomain(
+  region,
+  domain,
+  includeLatestExec = true
+) {
+  if (!region || !domain) {
+    throw new Error('region, domain is required');
+  }
 
-    return await response.json();
-  },
+  // 백엔드 실제 엔드포인트에 맞게 path만 조정하면 됨
+  return httpGet('/lineage/domain', {
+    region,
+    domain,
+    includeLatestExec,
+    view: 'both',
+  });
+}
 
-  // 특정 파이프라인 Lineage
-  async getLineage(pipeline, region = 'ap-northeast-2', includeLatestExec = true, domain = null) {
-    let url = `${LINEAGE_API_BASE}/lineage?pipeline=${encodeURIComponent(pipeline)}&region=${region}&includeLatestExec=${includeLatestExec}`;
+/** 특정 스키마 기준 라인리지 조회 */
+export async function getSchemaLineage(schemaName, region = "ap-northeast-2") {
+  return httpGet("/lineage/schema", {
+    schema: schemaName,
+    region,
+  });
+}
 
-    if (domain) url += `&domain=${encodeURIComponent(domain)}`;
+// SageMaker 파이프라인 목록
+export async function getPipelines(params = {}) {
+  return httpGet("/sagemaker/pipelines", params);
+}
 
-    const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
-    });
+// 기본 라인리지 (그래프)
+export async function getLineage(
+  pipeline,
+  region,
+  includeLatestExec = false,
+  domain
+) {
+  if (!pipeline || !region) throw new Error("pipeline, region is required");
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch lineage: ${response.status}`);
-    }
+  return httpGet("/lineage", {
+    pipeline,
+    region,
+    view: "both",
+    includeLatestExec,
+    domain,
+  });
+}
 
-    return await response.json();
-  },
+// 스키마 라인리지
+export async function getLineageSchema({
+  pipeline,
+  region = 'ap-northeast-2',
+  include_featurestore = true,
+  include_sql = true,
+  scan_if_missing = false,
+}) {
+  const params = new URLSearchParams({
+    pipeline,
+    region,
+    include_featurestore: String(include_featurestore),
+    include_sql: String(include_sql),
+    scan_if_missing: String(scan_if_missing),
+  });
 
-  // 새로운 API: 도메인으로 라인리지 조회
-  async getLineageByDomain(region = 'ap-northeast-2', domain, includeLatestExec = false) {
-    const url = `${LINEAGE_API_BASE}/lineage/by-domain?region=${region}&domain=${encodeURIComponent(domain)}&includeLatestExec=${includeLatestExec}`;
+  const res = await fetch(`${BASE_URL}/schema?${params.toString()}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
 
-    const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch schema lineage: ${res.status}`);
+  }
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch lineage by domain: ${response.status}`);
-    }
-
-    return await response.json();
-  },
-
-  async getSchemaLayer(pipeline, region = 'ap-northeast-2') {
-    const url = `${LINEAGE_API_BASE}/lineage/schema?pipeline=${encodeURIComponent(pipeline)}&region=${region}`;
-    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
-    if (!res.ok) throw new Error(`Failed to fetch schema layer: ${res.status}`);
-    return res.json();
-  },
-};
+  return res.json();
+}
