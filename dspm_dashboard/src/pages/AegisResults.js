@@ -2,17 +2,18 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { aegisApi } from '../services/aegisApi';
-import { AlertTriangle, CheckCircle, XCircle, Info, ChevronLeft, ChevronRight, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Info, ChevronLeft, ChevronRight, RefreshCw, X, Clock } from 'lucide-react';
 
 const AegisResults = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { services, timestamp, selectedItems } = location.state || {};
+  const { services, timestamp, selectedItems, crossCheckReport } = location.state || {};
 
   console.log('AegisResults - location.state:', location.state);
   console.log('AegisResults - services:', services);
   console.log('AegisResults - selectedItems:', selectedItems);
   console.log('AegisResults - timestamp:', timestamp);
+  console.log('AegisResults - crossCheckReport:', crossCheckReport);
 
   const [items, setItems] = useState([]);
   const [categoryCounts, setCategoryCounts] = useState(null);
@@ -30,6 +31,10 @@ const AegisResults = () => {
   const [allFilteredItems, setAllFilteredItems] = useState([]);
   const [selectedResource, setSelectedResource] = useState(null);
   const [expandedEntityModal, setExpandedEntityModal] = useState(null);
+  
+  // 보유기간 만료 관련 state 추가
+  const [retentionViolations, setRetentionViolations] = useState(null);
+  const [showRetentionModal, setShowRetentionModal] = useState(false);
 
   const pageSize = 20;
 
@@ -61,6 +66,45 @@ const AegisResults = () => {
       total: filteredItems.length,
       categories: categories,
     };
+  };
+
+  // 보유기간 만료 데이터 처리
+  useEffect(() => {
+    if (crossCheckReport) {
+      console.log('Cross-check report:', crossCheckReport);
+      processRetentionViolations();
+    }
+  }, [crossCheckReport]);
+
+  // 보유기간 만료 데이터 처리 함수
+  const processRetentionViolations = () => {
+    if (!crossCheckReport || !crossCheckReport.s3_scan) {
+      setRetentionViolations({
+        count: 0,
+        matched_ids: [],
+        matched_files: []
+      });
+      return;
+    }
+
+    const s3Matches = crossCheckReport.s3_scan.matches;
+    
+    setRetentionViolations({
+      count: s3Matches.found_ids ? s3Matches.found_ids.length : 0,
+      matched_ids: s3Matches.found_ids || [],
+      matched_files: s3Matches.matched_files || [],
+      rds_ids_checked: s3Matches.rds_ids_checked || [],
+      not_found_ids: s3Matches.not_found_ids || []
+    });
+  };
+
+  // 보유기간 만료 카드 클릭 핸들러
+  const handleRetentionCardClick = () => {
+    if (retentionViolations && retentionViolations.count > 0) {
+      setShowRetentionModal(true);
+    } else {
+      alert('보유기간이 만료된 데이터가 없습니다.');
+    }
   };
 
   // 초기 로드
@@ -133,98 +177,78 @@ const AegisResults = () => {
             // 더 이상 데이터가 없으면 중단
             if (response.items.length < fetchPageSize) {
               hasMore = false;
-              console.log('마지막 페이지 도달');
             } else {
               currentFetchPage++;
             }
           } else {
             hasMore = false;
-            console.log('더 이상 데이터 없음');
           }
 
-          // 무한 루프 방지 (최대 50페이지 = 10,000개)
+          // 안전장치: 최대 50페이지까지만
           if (currentFetchPage > 50) {
-            console.warn('최대 페이지 수 도달');
+            console.log('최대 페이지 수 도달');
             hasMore = false;
           }
         }
 
-        console.log(`총 ${allItems.length}개 아이템 로드 완료`);
         return allItems;
       };
 
-      // 전체 아이템 가져오기
-      let filteredItems = await fetchAllItems();
-      console.log('전체 로드된 items 개수:', filteredItems.length);
+      // 전체 데이터 가져오기
+      const allItems = await fetchAllItems();
+      console.log('전체 아이템 수:', allItems.length);
 
-      // sourceNames가 있으면 필터링 (모든 선택된 리소스 포함)
-      if (sourceNames && sourceNames.length > 0) {
-        console.log('=== 리소스 필터링 시작 ===');
-        console.log('필터링 기준 sourceNames:', sourceNames);
-        
-        filteredItems = filteredItems.filter(item => {
-          if (!item.source) return false;
-          
-          // 선택된 리소스 중 하나라도 매칭되면 true
-          return sourceNames.some(sourceName => {
-            const matches = item.source.includes(sourceName) || 
-                           item.source.includes(`s3/${sourceName}`) ||
-                           item.source.includes(`s3://${sourceName}`);
-            
-            if (matches) {
-              console.log(`  ✓ 매칭: ${item.source} <- ${sourceName}`);
-            }
-            
-            return matches;
-          });
+      // 소스명으로 필터링
+      let filtered = allItems;
+      
+      if (sourceNames.length > 0) {
+        filtered = allItems.filter(item => {
+          const itemSource = item.source || '';
+          return sourceNames.some(name => itemSource.includes(name));
         });
+        console.log('소스 필터 후:', filtered.length);
       }
 
-      console.log('리소스 필터링된 items 개수:', filteredItems.length);
-
-      // 선택된 리소스가 있으면 추가 필터링
+      // 리소스 필터 적용
       if (selectedResource) {
-        console.log('=== 선택된 리소스 필터링 ===');
-        console.log('선택된 리소스:', selectedResource);
-        
-        filteredItems = filteredItems.filter(item => {
-          if (!item.source) return false;
-          
-          return item.source.includes(selectedResource) || 
-                 item.source.includes(`s3/${selectedResource}`) ||
-                 item.source.includes(`s3://${selectedResource}`);
+        filtered = filtered.filter(item => {
+          const itemSource = item.source || '';
+          return itemSource.includes(selectedResource);
         });
-        
-        console.log('리소스별 필터링 후 개수:', filteredItems.length);
+        console.log('리소스 필터 후:', filtered.length);
       }
 
-      // 전체 필터링된 아이템 저장
-      setAllFilteredItems(filteredItems);
-
-      // 카테고리 통계 재계산 (리소스 필터 변경 시마다)
-      const newCategoryCounts = calculateCategoryCounts(filteredItems);
-      console.log('카테고리 통계 계산:', newCategoryCounts);
-      setCategoryCounts(newCategoryCounts);
-
-      // 선택된 카테고리가 있으면 해당 카테고리만 필터링
-      let displayItems = filteredItems;
+      // 카테고리 필터 적용
       if (selectedCategory) {
-        console.log('=== 카테고리 필터링 시작 ===');
-        console.log('선택된 카테고리:', selectedCategory);
-        displayItems = filteredItems.filter(item => item.category === selectedCategory);
-        console.log('카테고리 필터링된 items 개수:', displayItems.length);
+        filtered = filtered.filter(item => item.category === selectedCategory);
+        console.log('카테고리 필터 후:', filtered.length);
       }
 
-      // 페이지네이션 처리
-      const startIndex = (currentPage - 1) * pageSize;
-      const endIndex = startIndex + pageSize;
-      const paginatedItems = displayItems.slice(startIndex, endIndex);
+      setAllFilteredItems(filtered);
+      setTotalItems(filtered.length);
 
-      setItems(paginatedItems);
-      setTotalItems(displayItems.length);
-      setTotalPages(Math.ceil(displayItems.length / pageSize));
+      // 카테고리 통계 계산
+      const counts = calculateCategoryCounts(filtered);
+      setCategoryCounts(counts);
+      console.log('카테고리 통계:', counts);
+
+      // 현재 페이지 데이터만 추출
+      const startIdx = (currentPage - 1) * pageSize;
+      const endIdx = startIdx + pageSize;
+      const pageItems = filtered.slice(startIdx, endIdx);
+
+      setItems(pageItems);
+      setTotalPages(Math.ceil(filtered.length / pageSize));
+
+      // 데이터가 있으면 분석 완료로 처리
+      if (filtered.length > 0 && isAnalyzing) {
+        console.log('데이터 발견 - 분석 완료 처리');
+        setIsAnalyzing(false);
+        setAutoRefresh(false);
+      }
+
     } catch (err) {
-      console.error('loadData 에러:', err);
+      console.error('데이터 로드 실패:', err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -232,28 +256,12 @@ const AegisResults = () => {
   };
 
   const loadStats = async () => {
-    console.log('loadStats 시작');
     try {
       const statsData = await aegisApi.getFrontStats();
-      
-      console.log('getFrontStats 응답:', statsData);
-      
       setStats(statsData);
-
-      // 분석 완료 여부 판단
-      if (statsData && statsData.total_objects !== undefined && statsData.total_objects >= 0) {
-        setIsAnalyzing(false);
-        setAutoRefresh(false);
-      }
     } catch (err) {
       console.error('통계 로드 실패:', err);
     }
-  };
-
-  const handleManualRefresh = () => {
-    loadData();
-    loadStats();
-    setCountdown(10);
   };
 
   const getCategoryColor = (category) => {
@@ -324,93 +332,70 @@ const AegisResults = () => {
               분석 시작: {new Date(timestamp).toLocaleString('ko-KR')}
             </p>
             {isAnalyzing ? (
-              <p className="text-sm text-blue-600 mt-2 flex items-center gap-2">
-                <span className="animate-spin">⏳</span>
-                분석 진행 중... {countdown}초 후 자동 새로고침
+              <p className="text-sm text-blue-600 mt-2">
+                🔍 분석 진행 중... {autoRefresh && `(${countdown}초 후 자동 새로고침)`}
               </p>
-            ) : categoryCounts && (
-              <p className="text-sm text-green-600 mt-2 flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" />
-                분석 완료: {categoryCounts.total}개 객체 중 {categoryCounts.categories.public + categoryCounts.categories.sensitive + categoryCounts.categories.identifiers}개 검출
+            ) : (
+              <p className="text-sm text-green-600 mt-2">
+                ✓ 분석 완료
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
-              onClick={handleManualRefresh}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+              onClick={() => {
+                loadData();
+                loadStats();
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
               새로고침
             </button>
-            {isAnalyzing && (
-              <button
-                onClick={() => setAutoRefresh(!autoRefresh)}
-                className={`px-4 py-2 border rounded-lg flex items-center gap-2 ${
-                  autoRefresh ? 'bg-blue-50 border-blue-300 text-blue-700' : 'hover:bg-gray-50'
-                }`}
-              >
-                {autoRefresh ? '자동 새로고침 중지' : '자동 새로고침 시작'}
-              </button>
-            )}
             <button
               onClick={() => navigate(-1)}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
             >
-              <ChevronLeft className="w-4 h-4" />
-              돌아가기
+              목록으로
             </button>
           </div>
         </div>
 
-        {/* 선택된 서비스 목록 */}
-        <div className="flex flex-wrap gap-2">
-          {services.map((service, idx) => (
-            <span
-              key={idx}
-              className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-            >
-              {service}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* 리소스 필터 */}
-      {!isAnalyzing && services && services.length > 1 && (
-        <div className="bg-white rounded-lg p-4 shadow-sm border">
-          <label className="text-sm font-medium text-gray-700 mb-2 block">리소스별 필터</label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => handleResourceFilter(null)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                !selectedResource 
-                  ? 'bg-primary-600 text-white' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              전체 ({services.length}개)
-            </button>
-            {services.map((service, idx) => (
+        {/* 리소스 필터 버튼들 */}
+        {services && services.length > 1 && (
+          <div className="border-t pt-4">
+            <div className="flex flex-wrap gap-2">
               <button
-                key={idx}
-                onClick={() => handleResourceFilter(service)}
+                onClick={() => handleResourceFilter(null)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  selectedResource === service
-                    ? 'bg-primary-600 text-white'
+                  !selectedResource
+                    ? 'bg-primary-600 text-white' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {service}
+                전체 ({services.length}개)
               </button>
-            ))}
+              {services.map((service, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleResourceFilter(service)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedResource === service
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {service}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 통계 카드 */}
       {categoryCounts && !isAnalyzing && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div
             className={`bg-white rounded-lg p-6 shadow-sm border cursor-pointer transition-all ${
               !selectedCategory ? 'ring-2 ring-primary-600' : 'hover:shadow-md'
@@ -436,6 +421,29 @@ const AegisResults = () => {
               <div className="text-3xl font-bold text-gray-900">{count}</div>
             </div>
           ))}
+
+          {/* 보유기간 만료 카드 */}
+          {retentionViolations !== null && (
+            <div
+              className={`bg-white rounded-lg p-6 shadow-sm border cursor-pointer transition-all hover:shadow-md ${
+                retentionViolations.count > 0 ? 'border-purple-300' : ''
+              }`}
+              onClick={handleRetentionCardClick}
+            >
+              <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
+                <Clock className="w-4 h-4 text-purple-600" />
+                <span>보유기간 만료</span>
+              </div>
+              <div className="text-3xl font-bold text-gray-900">
+                {retentionViolations.count}
+              </div>
+              {retentionViolations.count > 0 && (
+                <div className="mt-2 text-xs text-purple-600">
+                  위반 발견
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -569,77 +577,69 @@ const AegisResults = () => {
               {/* 페이지네이션 */}
               {totalPages > 1 && (
                 <div className="p-6 border-t flex items-center justify-between">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    이전
-                  </button>
-
-                  <span className="text-sm text-gray-600">
-                    {currentPage} / {totalPages} 페이지
-                  </span>
-
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    다음
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                  <div className="text-sm text-gray-600">
+                    페이지 {currentPage} / {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
               )}
             </>
           ) : (
-            <div className="text-center py-12">
-              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-              <p className="text-lg font-medium text-gray-900 mb-2">분석 완료</p>
-              <p className="text-gray-600">
-                {selectedCategory 
-                  ? `${selectedCategory} 카테고리에서 민감 정보가 검출되지 않았습니다.`
-                  : '스캔한 데이터에서 민감 정보가 검출되지 않았습니다.'
-                }
-              </p>
+            <div className="p-12 text-center text-gray-500">
+              검출된 항목이 없습니다.
             </div>
           )}
         </div>
       )}
 
-      {/* 상세 모달 */}
+      {/* 상세 정보 모달 */}
       {selectedItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto m-4">
-            <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between z-10">
-              <h3 className="text-xl font-semibold">{selectedItem.file}</h3>
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="text-gray-500 hover:text-gray-700"
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
+          onClick={() => setSelectedItem(null)}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-auto m-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">{selectedItem.file}</h3>
+                {selectedItem.source && (
+                  <p className="text-sm text-gray-600 mt-1">소스: {selectedItem.source}</p>
+                )}
+              </div>
+              <button 
+                onClick={() => setSelectedItem(null)} 
+                className="text-gray-500 hover:text-gray-700 transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="space-y-6">
               {/* 기본 정보 */}
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">기본 정보</h4>
                 <dl className="grid grid-cols-2 gap-4">
-                  <div>
-                    <dt className="text-sm text-gray-600">ID</dt>
-                    <dd className="text-sm font-mono text-gray-900">{selectedItem.id}</dd>
-                  </div>
-                  {selectedItem.source && (
-                    <div>
-                      <dt className="text-sm text-gray-600">소스</dt>
-                      <dd className="text-sm text-gray-900">{selectedItem.source}</dd>
-                    </div>
-                  )}
                   {selectedItem.type && (
                     <div>
-                      <dt className="text-sm text-gray-600">타입</dt>
+                      <dt className="text-sm text-gray-600">파일 타입</dt>
                       <dd className="text-sm text-gray-900">{selectedItem.type}</dd>
                     </div>
                   )}
@@ -651,6 +651,24 @@ const AegisResults = () => {
                           {selectedItem.category}
                         </span>
                       </dd>
+                    </div>
+                  )}
+                  {selectedItem.stats && selectedItem.stats.rows_scanned && (
+                    <div>
+                      <dt className="text-sm text-gray-600">스캔한 행 수</dt>
+                      <dd className="text-sm text-gray-900">{selectedItem.stats.rows_scanned.toLocaleString()}</dd>
+                    </div>
+                  )}
+                  {selectedItem.stats && selectedItem.stats.total_entities && (
+                    <div>
+                      <dt className="text-sm text-gray-600">탐지된 엔티티</dt>
+                      <dd className="text-sm text-gray-900">{selectedItem.stats.total_entities.toLocaleString()}</dd>
+                    </div>
+                  )}
+                  {selectedItem.ai_hits && (
+                    <div>
+                      <dt className="text-sm text-gray-600">AI 탐지 건수</dt>
+                      <dd className="text-sm text-gray-900">{selectedItem.ai_hits.length.toLocaleString()}</dd>
                     </div>
                   )}
                 </dl>
@@ -680,7 +698,7 @@ const AegisResults = () => {
                           <span className="text-sm text-gray-900 font-mono">{hit.text}</span>
                         </div>
                         <span className="text-xs text-gray-600">
-                          신뢰도: {(hit.score * 100).toFixed(1)}%
+                          신뢰도: {(hit.confidence * 100).toFixed(1)}%
                         </span>
                       </div>
                     ))}
@@ -688,76 +706,38 @@ const AegisResults = () => {
                 </div>
               )}
 
-              {/* 엔티티 정보 */}
+              {/* 엔티티 상세 */}
               {selectedItem.entities && Object.keys(selectedItem.entities).length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-3">검출된 엔티티</h4>
+                  <h4 className="font-semibold text-gray-900 mb-3">탐지된 엔티티</h4>
                   <div className="space-y-3">
-                    {Object.entries(selectedItem.entities).map(([entityType, entityData]) => (
-                      <div key={entityType} className="border rounded-lg p-4">
+                    {Object.entries(selectedItem.entities).map(([type, values]) => (
+                      <div key={type} className="border rounded-lg p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-gray-900">{entityType}</span>
-                          <span className="text-sm text-gray-600">{entityData.count}개</span>
+                          <span className="font-medium text-gray-900">{type}</span>
+                          <span className="text-sm text-gray-600">{values.length}개</span>
                         </div>
-                        {entityData.values && entityData.values.length > 0 && (
-                          <div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {entityData.values.slice(0, 5).map((value, idx) => (
-                                <span
-                                  key={idx}
-                                  className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs"
-                                >
-                                  {value}
-                                </span>
-                              ))}
-                            </div>
-                            {entityData.values.length > 5 && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedEntityModal({ 
-                                    type: entityType, 
-                                    values: entityData.values,
-                                    count: entityData.count 
-                                  });
-                                }}
-                                className="text-xs text-blue-600 hover:text-blue-800 mt-2 cursor-pointer font-medium"
-                              >
-                                +{entityData.values.length - 5}개 더
-                              </button>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap gap-2">
+                          {values.slice(0, 10).map((value, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-mono"
+                            >
+                              {value}
+                            </span>
+                          ))}
+                          {values.length > 10 && (
+                            <button
+                              onClick={() => setExpandedEntityModal({ type, values, count: values.length })}
+                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition-colors"
+                            >
+                              +{values.length - 10}개 더 보기
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* 통계 */}
-              {selectedItem.stats && (
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-3">통계</h4>
-                  <dl className="grid grid-cols-2 gap-4">
-                    {selectedItem.stats.rows_scanned && (
-                      <div>
-                        <dt className="text-sm text-gray-600">스캔된 행 수</dt>
-                        <dd className="text-sm text-gray-900">{selectedItem.stats.rows_scanned.toLocaleString()}</dd>
-                      </div>
-                    )}
-                    {selectedItem.stats.total_entities && (
-                      <div>
-                        <dt className="text-sm text-gray-600">총 엔티티 수</dt>
-                        <dd className="text-sm text-gray-900">{selectedItem.stats.total_entities.toLocaleString()}</dd>
-                      </div>
-                    )}
-                    {selectedItem.ai_hits && selectedItem.ai_hits.length > 0 && (
-                      <div>
-                        <dt className="text-sm text-gray-600">AI 탐지 건수</dt>
-                        <dd className="text-sm text-gray-900">{selectedItem.ai_hits.length.toLocaleString()}</dd>
-                      </div>
-                    )}
-                  </dl>
                 </div>
               )}
             </div>
@@ -797,6 +777,171 @@ const AegisResults = () => {
                 </span>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 보유기간 만료 모달 */}
+      {showRetentionModal && retentionViolations && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" 
+          onClick={() => setShowRetentionModal(false)}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 max-w-6xl w-full max-h-[80vh] overflow-auto m-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">보유기간 만료 데이터</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  RDS에서 익명화되었으나 S3에 남아있는 데이터를 발견했습니다.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowRetentionModal(false)} 
+                className="text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* 요약 정보 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="text-sm text-blue-600 mb-1">검사한 RDS ID</div>
+                <div className="text-2xl font-bold text-blue-900">
+                  {retentionViolations.rds_ids_checked.length}개
+                </div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="text-sm text-red-600 mb-1">S3에서 발견된 ID</div>
+                <div className="text-2xl font-bold text-red-900">
+                  {retentionViolations.matched_ids.length}개
+                </div>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="text-sm text-green-600 mb-1">정상 처리된 ID</div>
+                <div className="text-2xl font-bold text-green-900">
+                  {retentionViolations.not_found_ids.length}개
+                </div>
+              </div>
+            </div>
+
+            {/* 발견된 ID 목록 */}
+            {retentionViolations.matched_ids.length > 0 && (
+              <div className="mb-6">
+                <h4 className="font-semibold text-gray-900 mb-3">
+                  S3에 남아있는 ID 목록 ({retentionViolations.matched_ids.length}개)
+                </h4>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex flex-wrap gap-2">
+                    {retentionViolations.matched_ids.map((id) => (
+                      <span
+                        key={id}
+                        className="px-3 py-1.5 bg-red-100 text-red-800 rounded font-mono text-sm font-semibold"
+                      >
+                        ID: {id}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 파일별 상세 정보 */}
+            {retentionViolations.matched_files.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">
+                  위반 파일 상세 ({retentionViolations.matched_files.length}개 파일)
+                </h4>
+                <div className="space-y-4">
+                  {retentionViolations.matched_files.map((file, idx) => (
+                    <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-semibold text-gray-900">{file.file_key}</div>
+                            <div className="text-sm text-gray-600 mt-1">
+                              버킷: {file.bucket} | 크기: {(file.file_size / 1024).toFixed(2)} KB
+                            </div>
+                          </div>
+                          <span className="px-3 py-1 bg-red-100 text-red-800 rounded text-sm font-medium">
+                            {file.found_ids.length}개 ID 발견
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                  ID
+                                </th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                  행 번호
+                                </th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                  데이터
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {file.matches.map((match, matchIdx) => (
+                                <tr key={matchIdx} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900">
+                                    {match.id}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-600">
+                                    {match.row_number}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="text-xs text-gray-700 font-mono">
+                                      {Object.entries(match.row_data).map(([key, value]) => (
+                                        <div key={key} className="mb-1">
+                                          <span className="font-semibold text-gray-900">{key}:</span>{' '}
+                                          <span className="text-gray-700">{value || 'null'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 정상 처리된 ID */}
+            {retentionViolations.not_found_ids.length > 0 && (
+              <div className="mt-6">
+                <h4 className="font-semibold text-gray-900 mb-3">
+                  정상 처리된 ID ({retentionViolations.not_found_ids.length}개)
+                </h4>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex flex-wrap gap-2">
+                    {retentionViolations.not_found_ids.map((id) => (
+                      <span
+                        key={id}
+                        className="px-3 py-1.5 bg-green-100 text-green-800 rounded font-mono text-sm"
+                      >
+                        ID: {id}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-sm text-green-700 mt-3">
+                    이 ID들은 RDS에서 익명화되었고 S3에서도 발견되지 않았습니다.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

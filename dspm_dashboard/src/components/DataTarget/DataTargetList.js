@@ -1,9 +1,12 @@
-// src/components/DataTarget/DataTargetList.js
+// src/components/DataTarget/DataTargetList.js - RDS 스캔도 항상 실행
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ResourceCard from './ResourceCard';
 import DetailPanel from './DetailPanel';
 import { aegisApi } from '../../services/aegisApi';
+
+const ANALYZER_API_BASE = 'http://127.0.0.1:8400';
+const COLLECTOR_API = 'http://43.202.228.52:8000';
 
 const DataTargetList = ({ inventoryData, loading }) => {
   const navigate = useNavigate();
@@ -92,7 +95,96 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
   };
 
-  // 위협 식별 (저장된 결과 조회만)
+  // RDS 자동 스캔 실행 (항상 실행)
+  const runRdsAutoScan = async () => {
+    try {
+      console.log('=== RDS 자동 스캔 시작 ===');
+      
+      const response = await fetch(`${ANALYZER_API_BASE}/api/v2/scan/rds-auto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          collector_api: COLLECTOR_API,
+          default_user: 'madeit',
+          default_password: 'madeit1022!'
+        })
+      });
+
+      console.log('RDS 스캔 응답 상태:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`RDS 스캔 실패: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✓ RDS 자동 스캔 완료:', result);
+      
+      return result;
+    } catch (error) {
+      console.error('✗ RDS 자동 스캔 오류:', error);
+      throw error;
+    }
+  };
+
+  // RDS-S3 교차 검증 실행 (항상 실행)
+  const runCrossCheck = async () => {
+    try {
+      console.log('=== RDS-S3 교차 검증 시작 ===');
+      
+      const response = await fetch(`${ANALYZER_API_BASE}/api/v2/scan/cross-check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          collector_api: COLLECTOR_API,
+          bucket_names: null,
+          file_extensions: ['.csv', '.json', '.txt'],
+          max_files_per_bucket: 100
+        })
+      });
+
+      console.log('교차 검증 응답 상태:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`교차 검증 실패: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✓ RDS-S3 교차 검증 완료:', result);
+      
+      return result;
+    } catch (error) {
+      console.error('✗ RDS-S3 교차 검증 오류:', error);
+      throw error;
+    }
+  };
+
+  // 교차 검증 리포트 조회 (항상 실행)
+  const getCrossCheckReport = async () => {
+    try {
+      console.log('=== 교차 검증 리포트 조회 시작 ===');
+      
+      const response = await fetch(`${ANALYZER_API_BASE}/api/v2/scan/cross-check/report`);
+      
+      console.log('리포트 조회 응답 상태:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`리포트 조회 실패: ${response.status}`);
+      }
+
+      const report = await response.json();
+      console.log('✓ 교차 검증 리포트 조회 완료:', report);
+      
+      return report;
+    } catch (error) {
+      console.error('✗ 리포트 조회 오류:', error);
+      return null;
+    }
+  };
+
+  // 위협 식별 (저장된 결과 조회 + RDS 스캔 + 보유기간 체크 - 모두 항상 실행)
   const handleSendToAnalyzer = async () => {
     if (selectedResources.size === 0) {
       alert('위협 식별할 저장소를 선택해주세요.');
@@ -100,6 +192,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
 
     setIsSending(true);
+    console.log('\n========== 통합 검증 프로세스 시작 ==========\n');
 
     try {
       const selectedItems = inventoryData.filter(item => 
@@ -108,27 +201,95 @@ const DataTargetList = ({ inventoryData, loading }) => {
 
       console.log('선택된 리소스:', selectedItems);
 
-      // 저장된 결과 조회
-      const results = await aegisApi.getFrontList();
+      // RDS 인스턴스 확인 (정보용)
+      const rdsInstances = selectedItems.filter(item => item.type === 'rds');
+      const hasRds = rdsInstances.length > 0;
+
+      console.log('RDS 인스턴스 포함 여부:', hasRds);
+      console.log('RDS 인스턴스 개수:', rdsInstances.length);
+
+      let rdsAutoResult = null;
+      let crossCheckResult = null;
+      let crossCheckReport = null;
+
+      // Step 1: RDS 자동 스캔 (항상 실행)
+      console.log('\n[1/4] RDS 자동 스캔 시작 (항상 실행)...');
       
-      console.log('조회된 결과:', results);
+      try {
+        rdsAutoResult = await runRdsAutoScan();
+        console.log('✓ Step 1 완료: RDS 자동 스캔');
+      } catch (error) {
+        console.error('✗ Step 1 실패: RDS 자동 스캔');
+        console.error('에러:', error);
+        // RDS 스캔 실패해도 계속 진행
+      }
+
+      // Step 2: 일반 위협 식별 결과 조회 (S3, EBS 등)
+      console.log('\n[2/4] 위협 식별 결과 조회 시작...');
+      
+      let results = null;
+      try {
+        results = await aegisApi.getFrontList();
+        console.log('✓ Step 2 완료: 위협 식별 결과 조회');
+        console.log('조회된 결과:', results);
+      } catch (error) {
+        console.error('✗ Step 2 실패: 위협 식별 결과 조회');
+        console.error('에러:', error);
+      }
+
+      // Step 3: 보유기간 만료 체크 (RDS-S3 교차 검증) - 항상 실행
+      console.log('\n[3/4] 보유기간 만료 체크 (RDS-S3 교차 검증) 시작 (항상 실행)...');
+      
+      try {
+        crossCheckResult = await runCrossCheck();
+        console.log('✓ Step 3 완료: RDS-S3 교차 검증');
+      } catch (error) {
+        console.error('✗ Step 3 실패: RDS-S3 교차 검증');
+        console.error('에러:', error);
+        // 실패해도 계속 진행
+      }
+
+      // Step 4: 교차 검증 리포트 조회 - 항상 실행
+      console.log('\n[4/4] 교차 검증 리포트 조회 시작 (항상 실행)...');
+      
+      try {
+        crossCheckReport = await getCrossCheckReport();
+        console.log('✓ Step 4 완료: 교차 검증 리포트 조회');
+      } catch (error) {
+        console.error('✗ Step 4 실패: 교차 검증 리포트 조회');
+        console.error('에러:', error);
+      }
+
+      console.log('\n========== 모든 스캔 완료 ==========\n');
+      console.log('결과 요약:');
+      console.log('- RDS 자동 스캔:', rdsAutoResult ? '성공' : '실패');
+      console.log('- 위협 식별:', results ? '성공' : '실패');
+      console.log('- 교차 검증:', crossCheckResult ? '성공' : '실패');
+      console.log('- 리포트:', crossCheckReport ? '성공' : '실패');
 
       // 결과 페이지로 이동
+      console.log('\n결과 페이지로 이동...');
       navigate('/aegis-results', {
         state: {
           services: selectedItems.map(item => item.name || item.id),
           timestamp: new Date().toISOString(),
           selectedItems: selectedItems,
-          results: results
+          results: results,
+          rdsAutoResult: rdsAutoResult,
+          crossCheckResult: crossCheckResult,
+          crossCheckReport: crossCheckReport,
+          hasRds: hasRds
         }
       });
 
     } catch (error) {
+      console.error('\n========== 치명적 오류 발생 ==========');
       console.error('조회 실패:', error);
-      console.error('에러 상세:', error.message);
-      alert('결과 조회 중 오류가 발생했습니다: ' + error.message);
+      console.error('에러 메시지:', error.message);
+      alert('결과 조회 중 치명적인 오류가 발생했습니다:\n\n' + error.message);
     } finally {
       setIsSending(false);
+      console.log('\n========== 프로세스 종료 ==========\n\n');
     }
   };
 
