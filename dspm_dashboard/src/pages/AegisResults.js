@@ -509,6 +509,29 @@ const AegisResults = () => {
                           <p className="text-sm text-gray-700">{item.reason}</p>
                         )}
 
+                        {/* AI Hits 표시 */}
+                        {item.ai_hits && item.ai_hits.length > 0 && (
+                          <div className="mt-3">
+                            <div className="flex flex-wrap gap-2">
+                              {item.ai_hits.slice(0, 5).map((hit, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs"
+                                >
+                                  <span className="font-semibold">{hit.entity}</span>
+                                  <span className="text-gray-600">·</span>
+                                  <span className="font-mono">{hit.text}</span>
+                                </span>
+                              ))}
+                              {item.ai_hits.length > 5 && (
+                                <span className="px-2 py-1 text-xs text-gray-500">
+                                  +{item.ai_hits.length - 5}개 더
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         {item.stats && (
                           <div className="flex gap-4 mt-3 text-sm text-gray-600">
                             {item.stats.rows_scanned && (
@@ -517,15 +540,25 @@ const AegisResults = () => {
                             {item.stats.total_entities && (
                               <span>엔티티: {item.stats.total_entities}개</span>
                             )}
+                            {item.ai_hits && item.ai_hits.length > 0 && (
+                              <span>AI 탐지: {item.ai_hits.length}개</span>
+                            )}
                           </div>
                         )}
                       </div>
 
-                      {Object.keys(item.entities || {}).length > 0 && (
-                        <div className="ml-4">
-                          <span className="text-sm text-gray-600">
-                            {Object.keys(item.entities).length}개 엔티티 유형
-                          </span>
+                      {(Object.keys(item.entities || {}).length > 0 || (item.ai_hits && item.ai_hits.length > 0)) && (
+                        <div className="ml-4 text-right">
+                          {Object.keys(item.entities || {}).length > 0 && (
+                            <span className="text-sm text-gray-600 block">
+                              {Object.keys(item.entities).length}개 엔티티 유형
+                            </span>
+                          )}
+                          {item.ai_hits && item.ai_hits.length > 0 && (
+                            <span className="text-sm text-blue-600 block mt-1">
+                              AI 탐지 {item.ai_hits.length}건
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -633,6 +666,28 @@ const AegisResults = () => {
                 </div>
               )}
 
+              {/* AI Hits 상세 */}
+              {selectedItem.ai_hits && selectedItem.ai_hits.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-3">AI 탐지 결과 ({selectedItem.ai_hits.length}건)</h4>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {selectedItem.ai_hits.map((hit, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <span className="px-2 py-1 bg-gray-200 text-gray-900 rounded text-xs font-semibold min-w-[80px] text-center">
+                            {hit.entity}
+                          </span>
+                          <span className="text-sm text-gray-900 font-mono">{hit.text}</span>
+                        </div>
+                        <span className="text-xs text-gray-600">
+                          신뢰도: {(hit.score * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* 엔티티 정보 */}
               {selectedItem.entities && Object.keys(selectedItem.entities).length > 0 && (
                 <div>
@@ -696,6 +751,12 @@ const AegisResults = () => {
                         <dd className="text-sm text-gray-900">{selectedItem.stats.total_entities.toLocaleString()}</dd>
                       </div>
                     )}
+                    {selectedItem.ai_hits && selectedItem.ai_hits.length > 0 && (
+                      <div>
+                        <dt className="text-sm text-gray-600">AI 탐지 건수</dt>
+                        <dd className="text-sm text-gray-900">{selectedItem.ai_hits.length.toLocaleString()}</dd>
+                      </div>
+                    )}
                   </dl>
                 </div>
               )}
@@ -724,7 +785,7 @@ const AegisResults = () => {
                 className="text-gray-500 hover:text-gray-700 transition-colors"
               >
                 <X className="w-5 h-5" />
-                </button>
+              </button>
             </div>
             <div className="flex flex-wrap gap-2">
               {expandedEntityModal.values.map((value, idx) => (
