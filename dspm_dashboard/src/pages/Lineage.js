@@ -14,19 +14,20 @@ import { useLineage } from '../hooks/useLineage';
 
 const Lineage = () => {
   const {
-  pipelines,
-  loadingPipelines,
-  lineageData,
-  loading,
-  error,
-  loadPipelines,
-  loadLineage,
-  domains = [],
-  schemas,
-  loadingSchemas,
-  schemaLineageData,
-  loadSchemas,
-  loadSchemaLineage,
+    pipelines,
+    loadingPipelines,
+    lineageData,
+    loading,
+    error,
+    loadPipelines,
+    loadLineage,
+    domains = [],
+    schemas,
+    loadingSchemas,
+    schemaLineageData,
+    loadSchemas,
+    loadSchemaLineage,
+    buildSchemaGraph,
 } = useLineage ();
 
 const domainsSafe = Array.isArray(domains) ? domains : [];
@@ -45,7 +46,7 @@ const [showDomainDropdown, setShowDomainDropdown] = useState(false);
 const [selectedPipeline, setSelectedPipeline] = useState(null);
 const [showDropdown, setShowDropdown] = useState(false);
 
-const [viewMode, setViewMode] = useState("pipeline");
+const [viewMode, setViewMode] = useState('pipeline');
 const [showPipelineList, setShowPipelineList] = useState(true);
 
 const [selectedSchema, setSelectedSchema] = useState(null);
@@ -254,6 +255,20 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     });
 
     return connectedEdgeIds;
+  }, []);
+
+  const handlePaneClick = () => {
+    // 데이터셋 선택 / viewMode는 그대로 유지
+    setSelectedNode(null);
+    setSelectedNodeData(null);
+    setShowPanel(false);
+  };
+
+  const handleNodeClick = useCallback((event, node) => {
+    const nodeData = node.data?.nodeData || node.data || {};
+    setSelectedNode(node);
+    setSelectedNodeData(nodeData);
+    setShowPanel(true);
   }, []);
 
   const onNodeClick = useCallback((event, node) => {
@@ -641,236 +656,256 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     }
   }, []);
 
-  const buildSchemaGraph = useCallback((data) => {
-  if (!data?.tables) return { nodes: [], edges: [] };
-
-  console.log('Building schema graph with data:', data);
-
-  const nodes = [];
-  const edges = [];
-
-  // 데이터 관점 라인리지와 연결하기 위한 맵 생성
-  const linkToProcessMap = new Map();
+  // 비활성 노드/엣지 투명도 (너무 어둡지 않게)
+  const DIMMED_OPACITY = 0.7;
   
-  if (lineageData?.graphData) {
-    lineageData.graphData.edges.forEach(edge => {
-      const dataNode = lineageData.graphData.nodes.find(n => n.id === edge.source && n.type === 'dataArtifact');
-      const processNode = lineageData.graphData.nodes.find(n => n.id === edge.target && n.type === 'processNode');
-      
-      if (dataNode && processNode) {
-        if (!linkToProcessMap.has(dataNode.uri)) {
-          linkToProcessMap.set(dataNode.uri, []);
+  // 선택한 데이터셋(테이블)에 해당하는 데이터 흐름만 하이라이트하는 그래프
+  const buildDatasetGraph = useCallback(
+    (schemaLineageData, lineageData) => {
+      if (
+        !schemaLineageData ||
+        !schemaLineageData.tables ||
+        schemaLineageData.tables.length === 0 ||
+        !lineageData
+      ) {
+        return { nodes: [], edges: [] };
+      }
+
+      // 1) 데이터 관점 그래프를 기반으로 (레이아웃 재사용)
+      const { nodes: baseNodes, edges: baseEdges } = buildDataGraph(lineageData);
+      if (!baseNodes.length) return { nodes: [], edges: [] };
+
+      // 2) 선택된 테이블 (드롭다운에서 고른 데이터셋)
+      const table = schemaLineageData.tables[0];
+      const tableName = (table.name || '').toLowerCase();
+
+      // evaluation 전용 등 약간의 동의어 매핑
+      const synonyms = [tableName].filter(Boolean);
+
+      // "evaluation" 스키마가 실제로 evaluate.py / Evaluate 로 표시되는 케이스 대응
+      if (tableName === 'evaluation') {
+        synonyms.push('evaluate', 'eval');
+      }
+
+      const linkUris = [
+        ...(table.links || []),
+        ...(schemaLineageData.columns || [])
+          .filter((c) => (c.tableId || c.table_id || c.table) === table.id)
+          .flatMap((c) => c.links || []),
+      ]
+        .map(String)
+        .filter(Boolean);
+
+      const explicitLinks = new Set(linkUris);
+
+      // URI 매칭 (train / validation / evaluation 모두 커버)
+      const isUriMatch = (uriRaw) => {
+        if (!uriRaw) return false;
+        const uri = String(uriRaw);
+        const lower = uri.toLowerCase();
+
+        // 1) schema에서 내려온 링크 기준
+        if (explicitLinks.size) {
+          for (const link of explicitLinks) {
+            if (!link) continue;
+            if (uri === link) return true;
+            if (uri.startsWith(link)) return true;
+          }
         }
-        linkToProcessMap.get(dataNode.uri).push(processNode);
+
+        if (!synonyms.length) return false;
+
+        // 테이블 이름 + 동의어들 기준으로 uri 매칭
+        for (const name of synonyms) {
+          if (!name) continue;
+
+          if (lower.includes(`/${name}/`)) return true;
+          if (lower.endsWith(`/${name}`)) return true;
+          if (lower.endsWith(`/${name}.csv`)) return true;
+          if (lower.endsWith(`/${name}.parquet`)) return true;
+          if (lower.includes(`/${name}_`)) return true;
+          if (lower.includes(`_${name}.`)) return true;
+        }
+
+        // evaluation 계열 추가 heuristics (폴더/파일명이 eval* 인 경우)
+        if (tableName === 'evaluation') {
+          if (lower.includes('/eval/')) return true;
+          if (lower.endsWith('/eval')) return true;
+          if (lower.includes('_eval')) return true;
+          if (lower.includes('evaluate')) return true;
+        }
+
+        // 기본적으로 매치되지 않으면 false 반환
+        return false;
+      };
+
+      // dataArtifact 노드만 대상으로 seed 찾기 (nodeData 기준)
+
+      // dataArtifact 노드만 대상으로 seed 찾기 (nodeData 기준)
+      const dataNodes = baseNodes.filter((n) => {
+        const t = n.data?.nodeData?.type || n.data?.type || n.type;
+        return t === 'dataArtifact';
+      });
+
+      const seedIds = new Set(
+         dataNodes
+           .filter((n) => {
+             const uri =
+              n.data?.nodeData?.uri ||
+              n.data?.uri ||
+              n.uri;
+            return isUriMatch(uri);
+          })
+          .map((n) => n.id)
+      );
+
+      // seed를 못 찾으면 그냥 기본 그래프 리턴 (이게 UX상 안전)
+      if (seedIds.size === 0) {
+        // 1차: evaluation 같은 케이스용 - 프로세스 노드 이름으로 매칭 시도
+        const fallbackSeeds = baseNodes
+          .filter((n) => {
+            const label =
+              (n.data?.label ||
+                n.data?.nodeData?.label ||
+                n.data?.nodeData?.name ||
+                n.id ||
+                '') + '';
+            return label.toLowerCase().includes(tableName); // e.g. "Evaluate" ⊇ "evaluation"
+          })
+          .map((n) => n.id);
+
+        fallbackSeeds.forEach((id) => seedIds.add(id));
+
+        // 그래도 없으면: 이 데이터셋과 직접 연결된 노드 정보가 없다는 뜻이니
+        // 전체를 색깔 그대로 보여주는 대신 "전부 연하게" 처리해서
+        // 사용자에게 '매칭 없음' 상태라는 걸 시각적으로 보여줌.
+        if (seedIds.size === 0) {
+          console.warn('No matching nodes for table (no artifact & no label match):', tableName);
+
+          const DIMMED_OPACITY = 0.25;
+
+          const nodes = baseNodes.map((n) => ({
+            ...n,
+            style: {
+              ...(n.style || {}),
+              opacity: DIMMED_OPACITY,
+            },
+            data: {
+              ...(n.data || {}),
+              isDimmed: true,
+            },
+          }));
+
+          const edges = baseEdges.map((e) => ({
+            ...e,
+            style: {
+              ...(e.style || {}),
+              opacity: DIMMED_OPACITY,
+            },
+          }));
+
+          return { nodes, edges };
+        }
+      }
+
+      // 3) 선택된 데이터셋과 "직접 연결된" 노드만 활성화
+      //    - seed dataArtifact
+      //    - seed 와 edge 로 바로 연결된 process node
+      const activeNodeIds = new Set(seedIds);
+      const activeEdgeIds = new Set();
+
+      baseEdges.forEach((e) => {
+        const { source, target, id } = e;
+        const sourceIsSeed = seedIds.has(source);
+        const targetIsSeed = seedIds.has(target);
+
+      // seed <-> 인접 노드(주로 processNode)만 활성화
+      if (sourceIsSeed && !targetIsSeed) {
+        activeNodeIds.add(target);
+        activeEdgeIds.add(id);
+      } else if (targetIsSeed && !sourceIsSeed) {
+        activeNodeIds.add(source);
+        activeEdgeIds.add(id);
       }
     });
-  }
 
-  // 테이블 노드 생성 (가로 배치)
-  data.tables.forEach((table, tableIndex) => {
-    const tableId = `table:${table.name}`;
-    const startX = 50 + tableIndex * 400;
-    const startY = 100;
+      // 4) 스타일 적용 (비해당 노드는 연하지만 보이도록)
+      const DIMMED_OPACITY = 0.3; // 기존보다 살짝 진하게
 
-    nodes.push({
-      id: tableId,
-      type: 'default',
-      data: {
-        label: (
-          <div className="text-xs font-semibold text-center">
-            <div className="text-sm">{table.name}</div>
-            <div className="text-[10px] text-gray-500 mt-1">v{table.version}</div>
-            <div className="text-[9px] text-gray-400 mt-1">
-              {(table.columns || []).length} columns
-            </div>
-          </div>
-        ),
-        nodeData: { ...table, type: 'schemaTable' },
-      },
-      style: {
-        background: '#eff6ff',
-        border: '2px solid #3b82f6',
-        borderRadius: '8px',
-        padding: '12px',
-        width: '180px',
-        minHeight: '80px',
-      },
-      position: { x: startX, y: startY },
-      draggable: false,
-    });
-
-    // 컬럼 노드들 (세로 배치)
-    (table.columns || []).forEach((col, colIndex) => {
-      const colId = `${tableId}-col-${col.name}`;
-      nodes.push({
-        id: colId,
-        type: 'default',
-        data: {
-          label: (
-            <div className="text-[10px] text-center">
-              <div className="font-medium">{col.name}</div>
-              <div className="text-gray-500 text-[9px]">{col.type}</div>
-            </div>
-          ),
-          nodeData: { ...col, type: 'schemaColumn' },
-        },
-        style: {
-          background: '#f0fdf4',
-          border: '1px solid #86efac',
-          borderRadius: '6px',
-          padding: '8px',
-          width: '140px',
-          minHeight: '50px',
-        },
-        position: { x: startX + 20, y: startY + 120 + colIndex * 70 },
-        draggable: false,
+      const nodes = baseNodes.map((n) => {
+        const active = activeNodeIds.has(n.id);
+        return {
+          ...n,
+          style: {
+            ...(n.style || {}),
+            opacity: active ? 1 : DIMMED_OPACITY,
+          },
+          data: {
+            ...(n.data || {}),
+            isDimmed: !active,
+          },
+        };
       });
 
-      // 테이블 -> 컬럼 엣지
-      edges.push({
-        id: `edge-${tableId}-${colId}`,
-        source: tableId,
-        target: colId,
-        type: 'smoothstep',
-        style: { stroke: '#60a5fa', strokeWidth: 1.5 },
-      });
-    });
-
-    // 링크된 데이터 노드 생성 및 프로세스 노드와 연결
-    (table.links || []).forEach((link, linkIndex) => {
-      const linkId = `datalink:${link}`;
-      const linkParts = link.split('/');
-      const displayName = linkParts.slice(-2).join('/');
-
-      // 데이터 링크 노드
-      nodes.push({
-        id: linkId,
-        type: 'default',
-        data: {
-          label: (
-            <div className="text-[10px] text-center">
-              <div className="font-medium mb-1">📦 Data</div>
-              <div className="text-gray-600">{displayName}</div>
-            </div>
-          ),
-          nodeData: { type: 'dataLink', uri: link },
-        },
-        style: {
-          background: '#e0f2fe',
-          border: '2px solid #0284c7',
-          borderRadius: '6px',
-          padding: '10px',
-          width: '160px',
-          minHeight: '60px',
-        },
-        position: { x: startX + 250, y: startY + 200 + linkIndex * 100 },
-        draggable: false,
+      const edges = baseEdges.map((e) => {
+        const active = activeEdgeIds.has(e.id);
+        return {
+          ...e,
+          style: {
+            ...(e.style || {}),
+            opacity: active ? 1 : DIMMED_OPACITY,
+          },
+          animated: active && e.animated,
+        };
       });
 
-      // 테이블 -> 데이터 링크 엣지
-      edges.push({
-        id: `edge-${tableId}-${linkId}`,
-        source: tableId,
-        target: linkId,
-        type: 'smoothstep',
-        animated: true,
-        style: { stroke: '#0284c7', strokeWidth: 2 },
-      });
-
-      // 데이터 관점 라인리지의 프로세스 노드와 연결
-      const relatedProcesses = linkToProcessMap.get(link) || [];
-      relatedProcesses.forEach((processNode, procIndex) => {
-        const processNodeId = `process:${processNode.stepId}-${linkIndex}`;
-
-        // 프로세스 노드가 아직 추가되지 않았다면 추가
-        if (!nodes.find(n => n.id === processNodeId)) {
-          nodes.push({
-            id: processNodeId,
-            type: 'default',
-            data: {
-              label: (
-                <div className="text-xs text-center">
-                  <div className="font-semibold">{processNode.label}</div>
-                  <div className="text-[9px] text-gray-500 mt-1">
-                    {processNode.stepType}
-                  </div>
-                </div>
-              ),
-              nodeData: { ...processNode, type: 'processNode' },
-            },
-            style: {
-              background: '#dcfce7',
-              border: '2px solid #16a34a',
-              borderRadius: '6px',
-              padding: '10px',
-              width: '140px',
-              minHeight: '60px',
-            },
-            position: { x: startX + 450, y: startY + 200 + linkIndex * 100 + procIndex * 80 },
-            draggable: false,
-          });
-        }
-
-        // 데이터 링크 -> 프로세스 노드 엣지
-        edges.push({
-          id: `edge-${linkId}-${processNodeId}`,
-          source: linkId,
-          target: processNodeId,
-          type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#16a34a', strokeWidth: 2, strokeDasharray: '5,5' },
-        });
-      });
-    });
-  });
-
-  console.log('Schema graph built:', { 
-    nodes: nodes.length, 
-    edges: edges.length,
-    tablesWithColumns: data.tables.map(t => `${t.name}(${(t.columns || []).length} cols)`)
-  });
-
-  return { nodes, edges };
-}, [lineageData]);
+      return { nodes, edges };
+    },
+    [buildDataGraph]
+  );
   
 
   // 라인리지 / 스키마 변경 → 그래프 생성
   useEffect(() => {
-    // 1) 스키마 관점
-    if (viewMode === 'schema') {
-      if (!schemaLineageData) return;
-      const { nodes: n, edges: e } = buildSchemaGraph(schemaLineageData);
-      setNodes(n);
-      setEdges(e);
-      setSelectedNode(null);
-      setShowPanel(false);
-      setSelectedNodeData(null);
-      return;
-    }
-
-    // 2) 파이프라인 / 데이터 관점
     if (!lineageData) return;
 
+    // 1) 데이터셋(스키마) 관점
+    if (viewMode === 'schema' && schemaLineageData) {
+      const { nodes, edges } = buildDatasetGraph(
+        schemaLineageData,
+        lineageData
+      );
+      setNodes(nodes);
+      setEdges(edges);
+      setSelectedNode(null);
+      setSelectedNodeData(null);
+      setShowPanel(false);
+      return; // 중요: 아래 기본 그래프 로직으로 내려가지 않게
+    }
+
+    // 2) 파이프라인 / 데이터 전체 관점
     if (viewMode === 'pipeline') {
-      const { nodes: n, edges: e } = buildPipelineGraph(lineageData);
-      setNodes(n);
-      setEdges(e);
+      const { nodes, edges } = buildPipelineGraph(lineageData);
+      setNodes(nodes);
+      setEdges(edges);
     } else if (viewMode === 'data') {
-      const { nodes: n, edges: e } = buildDataGraph(lineageData);
-      setNodes(n);
-      setEdges(e);
+      // 'data' 기본
+      const { nodes, edges } = buildDataGraph(lineageData);
+      setNodes(nodes);
+      setEdges(edges);
     }
 
     setSelectedNode(null);
-    setShowPanel(false);
     setSelectedNodeData(null);
+    setShowPanel(false);
   }, [
     viewMode,
+    selectedSchema,
     lineageData,
     schemaLineageData,
     buildPipelineGraph,
     buildDataGraph,
-    buildSchemaGraph,
+    buildDatasetGraph,
   ]);
 
   const handleViewModeChange = (mode) => {
@@ -878,6 +913,9 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     setSelectedNode(null);
     setShowPanel(false);
     setSelectedNodeData(null);
+    if (mode !== 'schema') {
+      setSelectedSchema(null); // 스키마 모드 벗어나면 해제
+    }
   };
 
   // 파이프라인 선택/로드
@@ -886,6 +924,8 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
       setSelectedPipeline(pipeline);
       setShowPipelineList(false);
       setShowDropdown(false);
+      setViewMode('pipeline');
+      setSelectedSchema(null);
 
       const region = pipeline.region || 'ap-northeast-2';
       let domain = null;
@@ -902,23 +942,24 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
   );
 
   const handleSchemaSelect = useCallback(
-  async (schema) => {
-    if (!schema || !selectedPipeline) return;
-    
-    setSelectedSchema(schema);
-    setShowSchemaDropdown(false);
+    async (schema) => {
+      if (!schema || !selectedPipeline) return;
 
-    // 스키마 선택 시 라인리지 로드
-    await loadSchemaLineage(
-      schema.name,
-      selectedPipeline.name,
-      selectedPipeline.region || 'ap-northeast-2'
-    );
+      setSelectedSchema(schema);
+      setShowSchemaDropdown(false);
 
-    setViewMode('schema'); // 선택 시 스키마 관점으로 전환
-  },
-  [loadSchemaLineage, selectedDomain]
-);
+      await loadSchemaLineage(
+        schema.name,
+        selectedPipeline.name,
+        selectedPipeline.region || 'ap-northeast-2'
+      );
+
+      setViewMode('schema');
+      setShowPanel(false);
+      setSelectedNode(null);
+    },
+    [loadSchemaLineage, selectedPipeline]
+  );
 
   useEffect(() => {
     loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
@@ -1067,16 +1108,26 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                 onClick={async () => {
                   const next = !showSchemaDropdown;
                   setShowSchemaDropdown(next);
-                  if (next) {
+                  if (next&& selectedPipeline) {
                     await loadSchemas(
                       selectedPipeline.name,
                       selectedPipeline.region || 'ap-northeast-2'
                     );
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={!selectedPipeline}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors
+                  ${viewMode === 'schema'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
               >
-                <span className="text-sm font-medium">스키마 선택</span>
+                <span className="text-sm font-medium">
+                  <button /* ... */>
+                    {selectedSchema
+                      ? `데이터셋: ${selectedSchema.name}`
+                      : '데이터셋 선택'}
+                  </button>
+                </span>
                 <ChevronDown className="w-4 h-4" />
               </button>
 
@@ -1085,21 +1136,25 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                   {loadingSchemas ? (
                     <div className="text-center py-4 text-gray-500">불러오는 중...</div>
                   ) : schemas && schemas.length > 0 ? (
-                    schemas.map((table) => (
-                      <div
-                        key={table.name}
-                        onClick={() => handleSchemaSelect(table)} // 이후 데이터 흐름 하이라이트 로직 연결
-                        className="px-4 py-2 hover:bg-gray-50 cursor-pointer border-b"
-                      >
-                        <div className="font-medium text-sm">{table.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {(table.columns || []).length} columns
+                    schemas.map((table) => {
+                      const isActive = selectedSchema?.name === table.name;
+                      return (
+                        <div
+                          key={table.name}
+                          onClick={() => handleSchemaSelect(table)}
+                          className={`px-4 py-2 cursor-pointer border-b
+                            ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-gray-50'}`}
+                        >
+                          <div className="font-medium text-sm">{table.name}</div>
+                          <div className="text-xs text-gray-500">
+                            {(table.columns || []).length} columns
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="text-center py-4 text-gray-500">
-                      스키마가 없습니다
+                      데이터셋 정보가 없습니다
                     </div>
                   )}
                 </div>
@@ -1148,8 +1203,8 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
+              onNodeClick={handleNodeClick}
+              onPaneClick={handlePaneClick}
               fitView
               fitViewOptions={{ padding: 0.2 }}
               attributionPosition="bottom-left"

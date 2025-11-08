@@ -82,6 +82,10 @@ export async function getLineageSchema({
   include_sql = true,
   scan_if_missing = false,
 }) {
+  if (!pipeline) {
+    throw new Error('pipeline is required');
+  }
+  
   const params = {
     pipeline,
     region,
@@ -90,43 +94,30 @@ export async function getLineageSchema({
     scan_if_missing: String(scan_if_missing),
   };
 
-  try {
-    // /schema 엔드포인트 호출 (별칭)
-    const data = await httpGet('/schema', params);
-    
-    console.log('[lineageApi] Schema data received:', {
-      tables: data.tables?.length || 0,
-      columns: data.columns?.length || 0,
-      warnings: data.warnings
-    });
-    
-    // 테이블별로 컬럼 매핑
-    const tablesWithColumns = (data.tables || []).map(table => {
-      const tableColumns = (data.columns || []).filter(
-        col => col.tableId === table.id
-      );
-      
-      return {
-        ...table,
-        columns: tableColumns,
-      };
-    });
-    
-    console.log('[lineageApi] Tables with columns:', 
-      tablesWithColumns.map(t => `${t.name}(${t.columns.length} cols)`)
-    );
-    
-    return {
-      tables: tablesWithColumns,
-      columns: data.columns || [],
-      featureGroups: data.featureGroups || [],
-      features: data.features || [],
-      warnings: data.warnings || [],
-      links: data.tables?.reduce((acc, table) => [...acc, ...(table.links || [])], []) || []
-    };
-    
-  } catch (error) {
-    console.error('[lineageApi] Failed to load schema:', error);
-    throw error;
-  }
+  const data = await httpGet('/schema', params);
+
+  // tables와 columns를 join 해서 각 table에 columns 붙여줌
+  const tableMap = new Map(
+    (data.tables || []).map((t) => [
+      t.id,
+      {
+        ...t,
+        columns: [],
+      },
+    ])
+  );
+
+  (data.columns || []).forEach((col) => {
+    // 백엔드 스키마에 따라 tableId 혹은 table 사용 가능성 모두 처리
+    const tableId = col.tableId || col.table_id || col.table;
+    const tbl = tableMap.get(tableId);
+    if (tbl) {
+      tbl.columns.push(col);
+    }
+  });
+
+  return {
+    ...data,
+    tables: Array.from(tableMap.values()),
+  };
 }
