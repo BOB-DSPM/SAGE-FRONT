@@ -10,12 +10,17 @@ async function httpGet(path, params = {}) {
     url.searchParams.set(k, String(v));
   });
 
+  console.log(`[API] GET ${url.toString()}`);
+
   const res = await fetch(url.toString());
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API ${path} ${res.status}: ${text}`);
   }
-  return res.json();
+
+  const data = await res.json();
+  console.log(`[API] Response from ${path}:`, data);
+  return data;
 }
 
 /** 도메인 기준 라인리지 */
@@ -29,7 +34,7 @@ export async function getLineageByDomain(
   }
 
   // 백엔드 실제 엔드포인트에 맞게 path만 조정하면 됨
-  return httpGet('/lineage/domain', {
+  return httpGet('/lineage/by-domain', {
     region,
     domain,
     includeLatestExec,
@@ -38,9 +43,10 @@ export async function getLineageByDomain(
 }
 
 /** 특정 스키마 기준 라인리지 조회 */
-export async function getSchemaLineage(schemaName, region = "ap-northeast-2") {
+export async function getSchemaLineage(pipelineName, region = "ap-northeast-2") {
+  if (!pipelineName) throw new Error("pipeline is required");
   return httpGet("/lineage/schema", {
-    schema: schemaName,
+    pipeline: pipelineName,
     region,
   });
 }
@@ -76,21 +82,51 @@ export async function getLineageSchema({
   include_sql = true,
   scan_if_missing = false,
 }) {
-  const params = new URLSearchParams({
+  const params = {
     pipeline,
     region,
     include_featurestore: String(include_featurestore),
     include_sql: String(include_sql),
     scan_if_missing: String(scan_if_missing),
-  });
+  };
 
-  const res = await fetch(`${BASE_URL}/schema?${params.toString()}`, {
-    headers: { 'Content-Type': 'application/json' },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to fetch schema lineage: ${res.status}`);
+  try {
+    // /schema 엔드포인트 호출 (별칭)
+    const data = await httpGet('/schema', params);
+    
+    console.log('[lineageApi] Schema data received:', {
+      tables: data.tables?.length || 0,
+      columns: data.columns?.length || 0,
+      warnings: data.warnings
+    });
+    
+    // 테이블별로 컬럼 매핑
+    const tablesWithColumns = (data.tables || []).map(table => {
+      const tableColumns = (data.columns || []).filter(
+        col => col.tableId === table.id
+      );
+      
+      return {
+        ...table,
+        columns: tableColumns,
+      };
+    });
+    
+    console.log('[lineageApi] Tables with columns:', 
+      tablesWithColumns.map(t => `${t.name}(${t.columns.length} cols)`)
+    );
+    
+    return {
+      tables: tablesWithColumns,
+      columns: data.columns || [],
+      featureGroups: data.featureGroups || [],
+      features: data.features || [],
+      warnings: data.warnings || [],
+      links: data.tables?.reduce((acc, table) => [...acc, ...(table.links || [])], []) || []
+    };
+    
+  } catch (error) {
+    console.error('[lineageApi] Failed to load schema:', error);
+    throw error;
   }
-
-  return res.json();
 }

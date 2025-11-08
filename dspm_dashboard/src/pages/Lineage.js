@@ -644,64 +644,194 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
   const buildSchemaGraph = useCallback((data) => {
   if (!data?.tables) return { nodes: [], edges: [] };
 
+  console.log('Building schema graph with data:', data);
+
   const nodes = [];
   const edges = [];
 
-  data.tables.forEach((table, i) => {
-    const tableId = `table-${table.name}`;
+  // 데이터 관점 라인리지와 연결하기 위한 맵 생성
+  const linkToProcessMap = new Map();
+  
+  if (lineageData?.graphData) {
+    lineageData.graphData.edges.forEach(edge => {
+      const dataNode = lineageData.graphData.nodes.find(n => n.id === edge.source && n.type === 'dataArtifact');
+      const processNode = lineageData.graphData.nodes.find(n => n.id === edge.target && n.type === 'processNode');
+      
+      if (dataNode && processNode) {
+        if (!linkToProcessMap.has(dataNode.uri)) {
+          linkToProcessMap.set(dataNode.uri, []);
+        }
+        linkToProcessMap.get(dataNode.uri).push(processNode);
+      }
+    });
+  }
 
-    // 테이블 노드
+  // 테이블 노드 생성 (가로 배치)
+  data.tables.forEach((table, tableIndex) => {
+    const tableId = `table:${table.name}`;
+    const startX = 50 + tableIndex * 400;
+    const startY = 100;
+
     nodes.push({
       id: tableId,
       type: 'default',
       data: {
         label: (
           <div className="text-xs font-semibold text-center">
-            {table.name}
+            <div className="text-sm">{table.name}</div>
+            <div className="text-[10px] text-gray-500 mt-1">v{table.version}</div>
+            <div className="text-[9px] text-gray-400 mt-1">
+              {(table.columns || []).length} columns
+            </div>
           </div>
         ),
-        nodeData: table,
+        nodeData: { ...table, type: 'schemaTable' },
       },
-      position: { x: 80 + i * 260, y: 140 },
-      style: getDataNodeStyle('schemaTable', false, false, false),
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Left,
+      style: {
+        background: '#eff6ff',
+        border: '2px solid #3b82f6',
+        borderRadius: '8px',
+        padding: '12px',
+        width: '180px',
+        minHeight: '80px',
+      },
+      position: { x: startX, y: startY },
       draggable: false,
     });
 
-    // 컬럼 노드들
-    (table.columns || []).forEach((col, j) => {
-      const colId = `${tableId}-col-${j}`;
+    // 컬럼 노드들 (세로 배치)
+    (table.columns || []).forEach((col, colIndex) => {
+      const colId = `${tableId}-col-${col.name}`;
       nodes.push({
         id: colId,
         type: 'default',
         data: {
           label: (
             <div className="text-[10px] text-center">
-              {col.name}
+              <div className="font-medium">{col.name}</div>
+              <div className="text-gray-500 text-[9px]">{col.type}</div>
             </div>
           ),
-          nodeData: col,
+          nodeData: { ...col, type: 'schemaColumn' },
         },
-        position: { x: 80 + i * 260, y: 240 + j * 70 },
-        style: getDataNodeStyle('schemaColumn', false, false, false),
-        sourcePosition: Position.Right,
-        targetPosition: Position.Top,
+        style: {
+          background: '#f0fdf4',
+          border: '1px solid #86efac',
+          borderRadius: '6px',
+          padding: '8px',
+          width: '140px',
+          minHeight: '50px',
+        },
+        position: { x: startX + 20, y: startY + 120 + colIndex * 70 },
         draggable: false,
       });
 
+      // 테이블 -> 컬럼 엣지
       edges.push({
         id: `edge-${tableId}-${colId}`,
         source: tableId,
         target: colId,
         type: 'smoothstep',
-        style: { stroke: '#38bdf8', strokeWidth: 2 },
+        style: { stroke: '#60a5fa', strokeWidth: 1.5 },
+      });
+    });
+
+    // 링크된 데이터 노드 생성 및 프로세스 노드와 연결
+    (table.links || []).forEach((link, linkIndex) => {
+      const linkId = `datalink:${link}`;
+      const linkParts = link.split('/');
+      const displayName = linkParts.slice(-2).join('/');
+
+      // 데이터 링크 노드
+      nodes.push({
+        id: linkId,
+        type: 'default',
+        data: {
+          label: (
+            <div className="text-[10px] text-center">
+              <div className="font-medium mb-1">📦 Data</div>
+              <div className="text-gray-600">{displayName}</div>
+            </div>
+          ),
+          nodeData: { type: 'dataLink', uri: link },
+        },
+        style: {
+          background: '#e0f2fe',
+          border: '2px solid #0284c7',
+          borderRadius: '6px',
+          padding: '10px',
+          width: '160px',
+          minHeight: '60px',
+        },
+        position: { x: startX + 250, y: startY + 200 + linkIndex * 100 },
+        draggable: false,
+      });
+
+      // 테이블 -> 데이터 링크 엣지
+      edges.push({
+        id: `edge-${tableId}-${linkId}`,
+        source: tableId,
+        target: linkId,
+        type: 'smoothstep',
+        animated: true,
+        style: { stroke: '#0284c7', strokeWidth: 2 },
+      });
+
+      // 데이터 관점 라인리지의 프로세스 노드와 연결
+      const relatedProcesses = linkToProcessMap.get(link) || [];
+      relatedProcesses.forEach((processNode, procIndex) => {
+        const processNodeId = `process:${processNode.stepId}-${linkIndex}`;
+
+        // 프로세스 노드가 아직 추가되지 않았다면 추가
+        if (!nodes.find(n => n.id === processNodeId)) {
+          nodes.push({
+            id: processNodeId,
+            type: 'default',
+            data: {
+              label: (
+                <div className="text-xs text-center">
+                  <div className="font-semibold">{processNode.label}</div>
+                  <div className="text-[9px] text-gray-500 mt-1">
+                    {processNode.stepType}
+                  </div>
+                </div>
+              ),
+              nodeData: { ...processNode, type: 'processNode' },
+            },
+            style: {
+              background: '#dcfce7',
+              border: '2px solid #16a34a',
+              borderRadius: '6px',
+              padding: '10px',
+              width: '140px',
+              minHeight: '60px',
+            },
+            position: { x: startX + 450, y: startY + 200 + linkIndex * 100 + procIndex * 80 },
+            draggable: false,
+          });
+        }
+
+        // 데이터 링크 -> 프로세스 노드 엣지
+        edges.push({
+          id: `edge-${linkId}-${processNodeId}`,
+          source: linkId,
+          target: processNodeId,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#16a34a', strokeWidth: 2, strokeDasharray: '5,5' },
+        });
       });
     });
   });
 
+  console.log('Schema graph built:', { 
+    nodes: nodes.length, 
+    edges: edges.length,
+    tablesWithColumns: data.tables.map(t => `${t.name}(${(t.columns || []).length} cols)`)
+  });
+
   return { nodes, edges };
-}, []);
+}, [lineageData]);
   
 
   // 라인리지 / 스키마 변경 → 그래프 생성
@@ -772,20 +902,22 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
   );
 
   const handleSchemaSelect = useCallback(
-  async (schemaName) => {
-    setSelectedSchema(schemaName);
+  async (schema) => {
+    if (!schema || !selectedPipeline) return;
+    
+    setSelectedSchema(schema);
     setShowSchemaDropdown(false);
 
-    // 필요하면 region 동적으로; 우선 고정
-    await loadSchemaLineage(schemaName, 'ap-northeast-2');
+    // 스키마 선택 시 라인리지 로드
+    await loadSchemaLineage(
+      schema.name,
+      selectedPipeline.name,
+      selectedPipeline.region || 'ap-northeast-2'
+    );
 
-    // 스키마 중심 뷰로 전환
-    setViewMode('schema');
-    setSelectedNode(null);
-    setShowPanel(false);
-    setSelectedNodeData(null);
+    setViewMode('schema'); // 선택 시 스키마 관점으로 전환
   },
-  [loadSchemaLineage]
+  [loadSchemaLineage, selectedDomain]
 );
 
   useEffect(() => {

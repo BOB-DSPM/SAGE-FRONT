@@ -4,7 +4,6 @@ import { sessionService } from '../services/sessionService';
 import {
   getPipelines,
   getLineage,
-  getSchemas,
   getSchemaLineage,
   getLineageByDomain,
   getLineageSchema,
@@ -170,7 +169,6 @@ export const useLineage = () => {
   );
 
   /* -------------------- 스키마 목록 -------------------- */
-
   const loadSchemas = useCallback(
     async (pipelineName, region = 'ap-northeast-2') => {
       if (!pipelineName) return;
@@ -185,28 +183,46 @@ export const useLineage = () => {
           scan_if_missing: false,
         });
 
-        // 전체 응답 저장 (나중에 컬럼/링크 쓸 수 있음)
-        setSchemaLineageData(data);
+        console.log('Schema data loaded:', data);
 
-        // 드롭다운에서 쓸 테이블 목록
-        const tables = Array.isArray(data.tables) ? data.tables : [];
-        setSchemas(tables);
+        // 핵심 수정: columns를 tableId 기준으로 그룹화하여 각 테이블에 연결
+        const tablesWithColumns = (data.tables || []).map(table => {
+          const tableColumns = (data.columns || []).filter(
+            col => col.tableId === table.id
+          );
+          
+          return {
+            ...table,
+            columns: tableColumns,
+          };
+        });
+
+        console.log('Tables with columns:', tablesWithColumns);
+
+        setSchemaLineageData(data);
+        setSchemas(tablesWithColumns);
+        
+        return data;
       } catch (err) {
         console.error('loadSchemas error', err);
         setSchemas([]);
+        return null;
       } finally {
         setLoadingSchemas(false);
       }
     },
-    []
+    [] // 의존성 배열에서 loadSchemaLineage 제거
   );
 
   /* -------------------- 스키마 기준 라인리지 -------------------- */
-
   const loadSchemaLineage = useCallback(
-    async (schemaName, region = 'ap-northeast-2') => {
+    async (pipelineName, schemaName, region = 'ap-northeast-2') => {
       if (!schemaName || !schemaName.trim()) {
         setError('스키마 이름을 입력하세요');
+        return null;
+      }
+      if (!pipelineName) {
+        setError('파이프라인이 선택되지 않았습니다');
         return null;
       }
 
@@ -214,9 +230,23 @@ export const useLineage = () => {
       setError(null);
 
       try {
-        const data = await getSchemaLineage(schemaName, region);
-        setSchemaLineageData(data);
-        return data;
+        const data = await getSchemaLineage(pipelineName, region);
+
+        const filteredTables = (data.tables || []).filter(
+          (t) => t.name === schemaName
+        );
+        const filteredColumns = (data.columns || []).filter(
+          (c) => filteredTables.some((t) => t.id === c.tableId)
+        );
+
+        const filtered = {
+          ...data,
+          tables: filteredTables,
+          columns: filteredColumns,
+        };
+
+        setSchemaLineageData(filtered);
+        return filtered;
       } catch (err) {
         console.error('Failed to load schema lineage:', err);
         setError(err.message);
@@ -229,10 +259,146 @@ export const useLineage = () => {
     []
   );
 
+  /* -------------------- 빌드 스키마 그래프 -------------------- */
+
+  // buildSchemaGraph 함수 수정
+  const buildSchemaGraph = useCallback(
+    (data) => {
+      if (!data?.tables) return { nodes: [], edges: [] };
+
+      const nodes = [];
+      const edges = [];
+      const processedLinks = new Set();
+
+      // 테이블 노드 생성
+      data.tables.forEach((table) => {
+        const tableId = `table:${table.name}`;
+        nodes.push({
+          id: tableId,
+          type: 'default',
+          data: {
+            label: (
+              <div className="text-xs font-semibold text-center">
+                <div>{table.name}</div>
+                <div className="text-[10px] text-gray-500">v{table.version}</div>
+                <div className="text-[9px] text-gray-400 mt-1">
+                  {(table.columns || []).length} columns
+                </div>
+              </div>
+            ),
+            nodeData: { ...table, type: 'schemaTable' },
+          },
+          style: getDataNodeStyle('schemaTable', false, false, false),
+          position: { x: 0, y: 0 },
+        });
+
+        // 링크된 데이터 노드와 엣지 생성
+        (table.links || []).forEach((link) => {
+          if (!processedLinks.has(link)) {
+            processedLinks.add(link);
+            const linkId = link;
+            const linkParts = link.split('/');
+            const displayName = linkParts.slice(-2).join('/');
+
+            nodes.push({
+              id: linkId,
+              type: 'default',
+              data: {
+                label: (
+                  <div className="text-[10px] text-center">
+                    {displayName}
+                  </div>
+                ),
+                nodeData: { type: 'dataLink', uri: link },
+              },
+              style: getDataNodeStyle('dataLink', false, false, false),
+              position: { x: 0, y: 0 },
+            });
+
+            edges.push({
+              id: `edge-${tableId}-${linkId}`,
+              source: tableId,
+              target: linkId,
+              type: 'smoothstep',
+              animated: true,
+              style: { stroke: '#0284c7', strokeWidth: 1 },
+            });
+          }
+        });
+      });
+
+      // // 데이터 관점 라인리지와 연결
+      // if (lineageData?.graphData) {
+      //   processedLinks.forEach((link) => {
+      //     const dataNode = lineageData.graphData.nodes.find(
+      //       (n) => n.type === 'dataArtifact' && n.uri === link
+      //     );
+      //     if (dataNode) {
+      //       const processNodes = lineageData.graphData.nodes.filter((n) =>
+      //         lineageData.graphData.edges.some(
+      //           (e) => (e.source === dataNode.id && e.target === n.id) || (e.source === n.id && e.target === dataNode.id)
+      //         )
+      //       );
+
+      //       processNodes.forEach((processNode) => {
+      //         edges.push({
+      //           id: `edge-${link}-${processNode.id}`,
+      //           source: link,
+      //           target: processNode.id,
+      //           type: 'smoothstep',
+      //           animated: true,
+      //           style: { stroke: '#16a34a', strokeWidth: 1 },
+      //         });
+      //       });
+      //     }
+      //   });
+      // }
+
+      return { nodes, edges };
+    },
+    [lineageData]
+  );
+
+  /* -------------------- 스타일 유틸리티 함수 -------------------- */
+
+  const getDataNodeStyle = (nodeType, isSelected, isConnected, isDimmed) => {
+    const baseStyle = {
+      border: '1px solid #e2e8f0',
+      borderRadius: '4px',
+      padding: '8px',
+      fontSize: '12px',
+      width: 'auto',
+      minWidth: '120px',
+    };
+
+    if (isDimmed) {
+      return {
+        ...baseStyle,
+        opacity: 0.3,
+      };
+    }
+
+    switch (nodeType) {
+      case 'schemaTable':
+        return {
+          ...baseStyle,
+          backgroundColor: isSelected ? '#bfdbfe' : '#eff6ff',
+          borderColor: isSelected ? '#3b82f6' : isConnected ? '#60a5fa' : '#e2e8f0',
+        };
+      case 'dataLink':
+        return {
+          ...baseStyle,
+          backgroundColor: isSelected ? '#bbf7d0' : '#f0fdf4',
+          borderColor: isSelected ? '#22c55e' : isConnected ? '#4ade80' : '#e2e8f0',
+        };
+      default:
+        return baseStyle;
+    }
+  };
+
   /* -------------------- 반환 -------------------- */
 
   return {
-    // 기존
     lineageData,
     loading,
     error,
@@ -244,11 +410,12 @@ export const useLineage = () => {
     domainLineageData,
     loadingDomainLineage,
     loadLineageByDomain,
-    // 새로 추가: 스키마 관련
     schemas,
     loadingSchemas,
     schemaLineageData,
     loadSchemas,
+    loadSchemaLineage,
+    buildSchemaGraph,
   };
 };
 
