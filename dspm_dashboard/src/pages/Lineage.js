@@ -61,16 +61,26 @@ const Lineage = () => {
   const [selectedSchema, setSelectedSchema] = useState(null);
   const [showSchemaDropdown, setShowSchemaDropdown] = useState(false);
 
-  // 노드 상세 패널 상태
+  // 노드 상세 패널/데이터
   const [showPanel, setShowPanel] = useState(false);
   const [selectedNodeData, setSelectedNodeData] = useState(null);
 
   // PII 값 표시 토글
   const [revealPII, setRevealPII] = useState(false);
 
-  // ─────────────────────────────────────────────────────────────
+  // 🔴 PII 수동 오버라이드(노드별)
+  // key: node.id 또는 dataArtifact의 경우 data:<s3-uri>
+  // value: { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore }
+  const [piiOverrides, setPiiOverrides] = useState({});
+
+  // 선택 노드에 대한 오버라이드 키 생성
+  const getOverrideKey = (nodeLike) => {
+    const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
+    if (n.type === 'dataArtifact' && n.uri) return `data:${String(n.uri)}`;
+    return String(n.id || n.stepId || n.label || '');
+  };
+
   // 공통 유틸
-  // ─────────────────────────────────────────────────────────────
   const safeValue = (v) => {
     if (v == null) return 'N/A';
     if (typeof v === 'object') {
@@ -102,34 +112,27 @@ const Lineage = () => {
     return null;
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // PII 헬퍼
-  // - 백엔드에서 node.meta.pii 또는 node.pii 형태로 내려온다고 가정
-  //   예시 구조:
-  //   {
-  //     hasPII: true,
-  //     types: ["NAME", "EMAIL"],
-  //     fields: ["customer_name", "email"],
-  //     sampleValues: ["홍*동", "t***@example.com"],
-  //     lastScanAt: "2025-11-08T12:34:56Z",
-  //     scanner: "SAGE-PII",
-  //     riskScore: 72
-  //   }
-  // ─────────────────────────────────────────────────────────────
+  // PII 메타 추출: 오버라이드 > meta.pii > pii
   const extractPIIMeta = (nodeLike) => {
     const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
-    const pii = n?.meta?.pii || n?.pii || {};
-    const hasPII = Boolean(pii?.hasPII);
-    const types = Array.isArray(pii?.types) ? pii.types : [];
-    const fields = Array.isArray(pii?.fields) ? pii.fields : [];
-    const sampleValues = Array.isArray(pii?.sampleValues) ? pii.sampleValues : [];
-    const lastScanAt = pii?.lastScanAt || null;
-    const scanner = pii?.scanner || null;
+    const overrideKey = getOverrideKey({ nodeData: n });
+    const ov = piiOverrides[overrideKey] || null;
+
+    const base = n?.meta?.pii || n?.pii || {};
+    // 오버라이드가 있으면 base 위에 덮어쓰기
+    const merged = ov ? { ...base, ...ov } : base;
+
+    const hasPII = Boolean(merged?.hasPII);
+    const types = Array.isArray(merged?.types) ? merged.types : [];
+    const fields = Array.isArray(merged?.fields) ? merged.fields : [];
+    const sampleValues = Array.isArray(merged?.sampleValues) ? merged.sampleValues : [];
+    const lastScanAt = merged?.lastScanAt || null;
+    const scanner = merged?.scanner || null;
     const riskScore =
-      typeof pii?.riskScore === 'number'
-        ? pii.riskScore
-        : typeof pii?.risk === 'number'
-        ? pii.risk
+      typeof merged?.riskScore === 'number'
+        ? merged.riskScore
+        : typeof merged?.risk === 'number'
+        ? merged.risk
         : null;
 
     return { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore };
@@ -137,9 +140,7 @@ const Lineage = () => {
 
   const hasPIIFlag = (nodeLike) => extractPIIMeta(nodeLike).hasPII;
 
-  // ─────────────────────────────────────────────────────────────
   // 스타일
-  // ─────────────────────────────────────────────────────────────
   const getNodeStyle = (type, status, isSelected, isConnected, isDimmed) => {
     let background = '#f3f4f6';
     let border = '2px solid #9ca3af';
@@ -151,7 +152,7 @@ const Lineage = () => {
       border = '2px solid #10b981';
     } else if (status === 'Failed') {
       background = '#fee2e2';
-      border = '2px solid #ef4444';
+      border = '2px solid '#ef4444';
     } else if (status === 'Executing') {
       background = '#dbeafe';
       border = '2px solid #3b82f6';
@@ -248,9 +249,7 @@ const Lineage = () => {
     return ['Extract', 'Validate', 'Preprocess', 'Train', 'Evaluate', 'ModelQualityCheck'];
   };
 
-  // ─────────────────────────────────────────────────────────────
   // 연결 탐색
-  // ─────────────────────────────────────────────────────────────
   const getAllConnectedNodes = useCallback((nodeId, edges) => {
     const connected = new Set([nodeId]);
     const toVisit = [nodeId];
@@ -285,9 +284,7 @@ const Lineage = () => {
     return connectedEdgeIds;
   }, []);
 
-  // ─────────────────────────────────────────────────────────────
   // 클릭 핸들러
-  // ─────────────────────────────────────────────────────────────
   const handlePaneClick = () => {
     setSelectedNode(null);
     setSelectedNodeData(null);
@@ -342,6 +339,7 @@ const Lineage = () => {
       setEdges((eds) =>
         eds.map((e) => {
           const isConnected = connectedEdgeIds.has(e.id);
+          // 데이터 엣지는 originalStroke에 sky/red 저장해 둠
           return {
             ...e,
             animated: false,
@@ -400,9 +398,7 @@ const Lineage = () => {
     );
   }, [setNodes, setEdges]);
 
-  // ─────────────────────────────────────────────────────────────
   // 그래프 빌더
-  // ─────────────────────────────────────────────────────────────
   const buildPipelineGraph = useCallback((lineageData) => {
     if (!lineageData?.graphPipeline?.nodes) return { nodes: [], edges: [] };
 
@@ -687,7 +683,10 @@ const Lineage = () => {
           ...n,
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
-          position: { x: pos.x - nodeW / 2, y: pos.y - nodeH / 2 },
+          position: {
+            x: pos.x - nodeW / 2,
+            y: pos.y - nodeH / 2,
+          },
         };
       });
       return { nodes: layoutedNodes, edges: newEdges };
@@ -695,9 +694,9 @@ const Lineage = () => {
       console.error('Dagre layout error:', e);
       return { nodes: newNodes, edges: newEdges };
     }
-  }, []);
+  }, [piiOverrides]); // 오버라이드 변화 시 스타일 갱신
 
-  // 선택 데이터셋 하이라이트(생략: 기존 로직 유지) --------------------------
+  // 데이터셋 하이라이트 (기존 로직 유지)
   const buildDatasetGraph = useCallback(
     (schemaLineageData, lineageData) => {
       if (
@@ -818,9 +817,7 @@ const Lineage = () => {
     [buildDataGraph]
   );
 
-  // ─────────────────────────────────────────────────────────────
   // 데이터 로딩 & 그래프 갱신
-  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
   }, [loadPipelines]);
@@ -859,11 +856,10 @@ const Lineage = () => {
     buildPipelineGraph,
     buildDataGraph,
     buildDatasetGraph,
+    piiOverrides, // 오버라이드 반영
   ]);
 
-  // ─────────────────────────────────────────────────────────────
   // 핸들러
-  // ─────────────────────────────────────────────────────────────
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
     setSelectedNode(null);
@@ -933,9 +929,7 @@ const Lineage = () => {
     }).length;
   };
 
-  // ─────────────────────────────────────────────────────────────
   // 렌더링
-  // ─────────────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* 헤더 */}
@@ -1052,7 +1046,7 @@ const Lineage = () => {
           )}
         </div>
 
-        {/* 관점 전환 & 스키마 */}
+        {/* 관점/스키마 */}
         {selectedPipeline && lineageData && (
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -1229,7 +1223,6 @@ const Lineage = () => {
                       </div>
                     </div>
 
-                    {/* 상태 */}
                     {selectedNodeData.run?.status && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Status</div>
@@ -1369,7 +1362,7 @@ const Lineage = () => {
                   </div>
                 )}
 
-                {/* ⚠️ PII Detection (dataArtifact 전용) */}
+                {/* 🔴 PII Detection (dataArtifact 전용) */}
                 {selectedNodeData.type === 'dataArtifact' && (
                   <div>
                     <div className="flex items-center justify-between mb-3">
@@ -1380,14 +1373,59 @@ const Lineage = () => {
                           <ShieldAlert className="w-4 h-4 text-red-600" />
                         </h4>
                       </div>
-                      <button
-                        onClick={() => setRevealPII((v) => !v)}
-                        className="flex items-center gap-1 px-2 py-1 text-xs border rounded hover:bg-gray-50"
-                        title={revealPII ? '가려보기' : '일부 보기'}
-                      >
-                        {revealPII ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                        {revealPII ? 'Mask' : 'Unmask'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setRevealPII((v) => !v)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                          title={revealPII ? '가려보기' : '일부 보기'}
+                        >
+                          {revealPII ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          {revealPII ? 'Mask' : 'Unmask'}
+                        </button>
+
+                        {/* 수동 오버라이드 버튼 */}
+                        {(() => {
+                          const key = getOverrideKey({ nodeData: selectedNodeData });
+                          const override = piiOverrides[key];
+                          return override?.hasPII ? (
+                            <button
+                              onClick={() =>
+                                setPiiOverrides((prev) => {
+                                  const next = { ...prev };
+                                  delete next[key];
+                                  return next;
+                                })
+                              }
+                              className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                              title="이 노드의 PII 강제 표시 해제"
+                            >
+                              강제 해제
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const now = new Date().toISOString();
+                                setPiiOverrides((prev) => ({
+                                  ...prev,
+                                  [key]: {
+                                    hasPII: true,
+                                    types: ['NAME', 'EMAIL'],
+                                    fields: ['customer_name', 'email'],
+                                    sampleValues: ['홍길동', 'test@example.com'],
+                                    lastScanAt: now,
+                                    scanner: 'Manual-Override',
+                                    riskScore: 80,
+                                  },
+                                }));
+                              }}
+                              className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                              title="이 노드를 PII 있음으로 강제 표시"
+                            >
+                              강제로 PII 표시
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </div>
 
                     {(() => {
@@ -1490,7 +1528,7 @@ const Lineage = () => {
                               {scanner && lastScanAt && <span className="mx-1">·</span>}
                               {lastScanAt && (
                                 <span>
-                                  Last Scan:{' '}
+                                  Last Scan{' '}
                                   {new Date(lastScanAt).toLocaleString('ko-KR', {
                                     year: 'numeric',
                                     month: '2-digit',
