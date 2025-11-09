@@ -15,7 +15,7 @@ export const useDataTarget = (activeTab) => {
       setLoadingInventory(true);
       setError(null);
       try {
-        const res = await fetch('http://211.44.183.248:8000/api/all-resources');
+        const res = await fetch('http://43.202.228.52:8000/api/all-resources');
         if (!res.ok) {
           setError(`API ${res.status} ${res.statusText}`);
           setInventoryData([]);
