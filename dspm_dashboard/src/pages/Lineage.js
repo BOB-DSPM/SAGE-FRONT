@@ -1,5 +1,5 @@
 // src/pages/Lineage.js
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import ReactFlow, {
   Controls,
   Background,
@@ -9,7 +9,19 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
-import { X, Database, Clock, CheckCircle, XCircle, Loader, RefreshCw, ChevronDown, GitBranch, Layers, Filter, CheckSquare, Square } from 'lucide-react';
+import {
+  X,
+  Database,
+  CheckCircle,
+  XCircle,
+  Loader,
+  ChevronDown,
+  GitBranch,
+  Layers,
+  Eye,
+  EyeOff,
+  ShieldAlert,
+} from 'lucide-react';
 import { useLineage } from '../hooks/useLineage';
 
 const Lineage = () => {
@@ -27,7 +39,6 @@ const Lineage = () => {
     schemaLineageData,
     loadSchemas,
     loadSchemaLineage,
-    buildSchemaGraph,
   } = useLineage();
 
   const domainsSafe = Array.isArray(domains) ? domains : [];
@@ -47,8 +58,6 @@ const Lineage = () => {
   const [showDropdown, setShowDropdown] = useState(false);
 
   const [viewMode, setViewMode] = useState('pipeline');
-  const [showPipelineList, setShowPipelineList] = useState(true);
-
   const [selectedSchema, setSelectedSchema] = useState(null);
   const [showSchemaDropdown, setShowSchemaDropdown] = useState(false);
 
@@ -56,42 +65,12 @@ const Lineage = () => {
   const [showPanel, setShowPanel] = useState(false);
   const [selectedNodeData, setSelectedNodeData] = useState(null);
 
-  const getDomainPipelineCount = (domainId) => {
-    if (domainId === '__untagged__') {
-      return pipelines.filter((p) => {
-        const hasDomainTag =
-          p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
-        return !hasDomainTag;
-      }).length;
-    }
+  // PII 값 표시 토글
+  const [revealPII, setRevealPII] = useState(false);
 
-    return pipelines.filter((p) => {
-      if (p.matchedDomain) return p.matchedDomain.domainId === domainId;
-      if (p.tags && p.tags['sagemaker:domain-arn']) {
-        return p.tags['sagemaker:domain-arn'].includes(domainId);
-      }
-      return false;
-    }).length;
-  };
-
-  const filteredPipelines = selectedDomain
-    ? selectedDomain.id === '__all__'
-      ? pipelines
-      : selectedDomain.id === '__untagged__'
-      ? pipelines.filter((p) => {
-          const hasDomainTag =
-            p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
-          return !hasDomainTag;
-        })
-      : pipelines.filter((p) => {
-          if (p.matchedDomain) return p.matchedDomain.domainId === selectedDomain.id;
-          if (p.tags && p.tags['sagemaker:domain-arn']) {
-            return p.tags['sagemaker:domain-arn'].includes(selectedDomain.id);
-          }
-          return false;
-        })
-    : pipelines;
-
+  // ─────────────────────────────────────────────────────────────
+  // 공통 유틸
+  // ─────────────────────────────────────────────────────────────
   const safeValue = (v) => {
     if (v == null) return 'N/A';
     if (typeof v === 'object') {
@@ -115,6 +94,52 @@ const Lineage = () => {
     return `${s}s`;
   };
 
+  const getStatusIcon = (status) => {
+    const s = safeValue(status);
+    if (s === 'Succeeded') return <CheckCircle className="w-4 h-4 text-green-600" />;
+    if (s === 'Failed') return <XCircle className="w-4 h-4 text-red-600" />;
+    if (s === 'Executing') return <Loader className="w-4 h-4 text-blue-600 animate-spin" />;
+    return null;
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // PII 헬퍼
+  // - 백엔드에서 node.meta.pii 또는 node.pii 형태로 내려온다고 가정
+  //   예시 구조:
+  //   {
+  //     hasPII: true,
+  //     types: ["NAME", "EMAIL"],
+  //     fields: ["customer_name", "email"],
+  //     sampleValues: ["홍*동", "t***@example.com"],
+  //     lastScanAt: "2025-11-08T12:34:56Z",
+  //     scanner: "SAGE-PII",
+  //     riskScore: 72
+  //   }
+  // ─────────────────────────────────────────────────────────────
+  const extractPIIMeta = (nodeLike) => {
+    const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
+    const pii = n?.meta?.pii || n?.pii || {};
+    const hasPII = Boolean(pii?.hasPII);
+    const types = Array.isArray(pii?.types) ? pii.types : [];
+    const fields = Array.isArray(pii?.fields) ? pii.fields : [];
+    const sampleValues = Array.isArray(pii?.sampleValues) ? pii.sampleValues : [];
+    const lastScanAt = pii?.lastScanAt || null;
+    const scanner = pii?.scanner || null;
+    const riskScore =
+      typeof pii?.riskScore === 'number'
+        ? pii.riskScore
+        : typeof pii?.risk === 'number'
+        ? pii.risk
+        : null;
+
+    return { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore };
+  };
+
+  const hasPIIFlag = (nodeLike) => extractPIIMeta(nodeLike).hasPII;
+
+  // ─────────────────────────────────────────────────────────────
+  // 스타일
+  // ─────────────────────────────────────────────────────────────
   const getNodeStyle = (type, status, isSelected, isConnected, isDimmed) => {
     let background = '#f3f4f6';
     let border = '2px solid #9ca3af';
@@ -165,22 +190,6 @@ const Lineage = () => {
       transition: 'all 0.2s ease',
       boxShadow,
     };
-  };
-
-  const getStatusIcon = (status) => {
-    const s = safeValue(status);
-    if (s === 'Succeeded') return <CheckCircle className="w-4 h-4 text-green-600" />;
-    if (s === 'Failed') return <XCircle className="w-4 h-4 text-red-600" />;
-    if (s === 'Executing') return <Loader className="w-4 h-4 text-blue-600 animate-spin" />;
-    return null;
-  };
-
-  // ─────────────────────────────────────────────────────────────
-  // PII 감지 헬퍼 및 데이터 노드 스타일(PII 색상 적용)
-  // ─────────────────────────────────────────────────────────────
-  const hasPIIFlag = (nodeLike) => {
-    const n = nodeLike?.data?.nodeData || nodeLike?.data || nodeLike;
-    return Boolean(n?.pii?.hasPII || n?.meta?.pii?.hasPII);
   };
 
   const getDataNodeStyle = (
@@ -239,6 +248,9 @@ const Lineage = () => {
     return ['Extract', 'Validate', 'Preprocess', 'Train', 'Evaluate', 'ModelQualityCheck'];
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // 연결 탐색
+  // ─────────────────────────────────────────────────────────────
   const getAllConnectedNodes = useCallback((nodeId, edges) => {
     const connected = new Set([nodeId]);
     const toVisit = [nodeId];
@@ -260,24 +272,23 @@ const Lineage = () => {
         }
       });
     }
-
     return connected;
   }, []);
 
   const getConnectedEdges = useCallback((connectedNodeIds, edges) => {
     const connectedEdgeIds = new Set();
-
     edges.forEach((edge) => {
       if (connectedNodeIds.has(edge.source) && connectedNodeIds.has(edge.target)) {
         connectedEdgeIds.add(edge.id);
       }
     });
-
     return connectedEdgeIds;
   }, []);
 
+  // ─────────────────────────────────────────────────────────────
+  // 클릭 핸들러
+  // ─────────────────────────────────────────────────────────────
   const handlePaneClick = () => {
-    // 데이터셋 선택 / viewMode는 그대로 유지
     setSelectedNode(null);
     setSelectedNodeData(null);
     setShowPanel(false);
@@ -389,13 +400,11 @@ const Lineage = () => {
     );
   }, [setNodes, setEdges]);
 
+  // ─────────────────────────────────────────────────────────────
+  // 그래프 빌더
+  // ─────────────────────────────────────────────────────────────
   const buildPipelineGraph = useCallback((lineageData) => {
-    console.log('Building pipeline graph from:', lineageData);
-
-    if (!lineageData?.graphPipeline?.nodes) {
-      console.warn('No graphPipeline.nodes in lineageData');
-      return { nodes: [], edges: [] };
-    }
+    if (!lineageData?.graphPipeline?.nodes) return { nodes: [], edges: [] };
 
     const graphData = lineageData.graphPipeline;
     const stepOrder = getPipelineStepOrder();
@@ -410,8 +419,6 @@ const Lineage = () => {
       return orderA - orderB;
     });
 
-    const nodeWidth = 180;
-    const nodeHeight = 80;
     const nodeSpacing = 250;
     const startX = 50;
     const fixedY = 250;
@@ -472,28 +479,15 @@ const Lineage = () => {
         target: currNode.id,
         type: 'smoothstep',
         animated: false,
-        style: {
-          stroke: '#9ca3af',
-          strokeWidth: 2,
-          originalStroke: '#9ca3af',
-        },
+        style: { stroke: '#9ca3af', strokeWidth: 2, originalStroke: '#9ca3af' },
       });
     }
 
-    console.log('Pipeline graph built (linear):', {
-      nodes: newNodes.length,
-      edges: newEdges.length,
-    });
     return { nodes: newNodes, edges: newEdges };
   }, []);
 
   const buildDataGraph = useCallback((lineageData) => {
-    console.log('Building data graph from:', lineageData);
-
-    if (!lineageData?.graphData?.nodes) {
-      console.warn('No graphData.nodes in lineageData');
-      return { nodes: [], edges: [] };
-    }
+    if (!lineageData?.graphData?.nodes) return { nodes: [], edges: [] };
 
     const graphData = lineageData.graphData;
     const pipelineNodes = lineageData.graphPipeline?.nodes || [];
@@ -574,7 +568,7 @@ const Lineage = () => {
             const dataNodeId = `data:${uri}`;
             if (dataNodeMap.has(dataNodeId) && !newNodes.find((n) => n.id === dataNodeId)) {
               const dataNode = dataNodeMap.get(dataNodeId);
-              const pii = Boolean(dataNode?.pii?.hasPII || dataNode?.meta?.pii?.hasPII);
+              const pii = hasPIIFlag({ data: { nodeData: dataNode } });
 
               newNodes.push({
                 id: dataNodeId,
@@ -590,11 +584,27 @@ const Lineage = () => {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '4px',
+                          gap: '6px',
                         }}
                       >
                         <Database className="w-3 h-3 text-blue-600" />
                         <span>{input.name || 'Data'}</span>
+                        {pii && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: '2px 6px',
+                              borderRadius: 9999,
+                              background: '#fee2e2',
+                              color: '#b91c1c',
+                              border: '1px solid #fecaca',
+                              fontWeight: 700,
+                            }}
+                            title="PII detected"
+                          >
+                            PII
+                          </span>
+                        )}
                       </div>
                       <div
                         style={{
@@ -645,43 +655,27 @@ const Lineage = () => {
           target: processNode.id,
           type: 'smoothstep',
           animated: false,
-          style: {
-            stroke: '#16a34a',
-            strokeWidth: 2,
-            originalStroke: '#16a34a',
-          },
+          style: { stroke: '#16a34a', strokeWidth: 2, originalStroke: '#16a34a' },
         });
       }
     });
 
+    // 레이아웃
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({
-      rankdir: 'LR',
-      nodesep: 100,
-      ranksep: 150,
-      ranker: 'network-simplex',
-    });
+    dagreGraph.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 150, ranker: 'network-simplex' });
 
-    const nodeWidth = 180;
-    const nodeHeight = 80;
+    const nodeW = 180;
+    const nodeH = 80;
 
-    newNodes.forEach((n) => {
-      dagreGraph.setNode(n.id, { width: nodeWidth, height: nodeHeight });
-    });
-
-    newEdges.forEach((e) => {
-      if (e.source && e.target) {
-        dagreGraph.setEdge(e.source, e.target);
-      }
-    });
+    newNodes.forEach((n) => dagreGraph.setNode(n.id, { width: nodeW, height: nodeH }));
+    newEdges.forEach((e) => dagreGraph.setEdge(e.source, e.target));
 
     try {
       dagre.layout(dagreGraph);
-
       const layoutedNodes = newNodes.map((n) => {
-        const nodeWithPosition = dagreGraph.node(n.id);
-        if (!nodeWithPosition) {
+        const pos = dagreGraph.node(n.id);
+        if (!pos) {
           return {
             ...n,
             sourcePosition: Position.Right,
@@ -693,28 +687,17 @@ const Lineage = () => {
           ...n,
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
-          position: {
-            x: nodeWithPosition.x - nodeWidth / 2,
-            y: nodeWithPosition.y - nodeHeight / 2,
-          },
+          position: { x: pos.x - nodeW / 2, y: pos.y - nodeH / 2 },
         };
       });
-
-      console.log('Data graph built:', {
-        nodes: layoutedNodes.length,
-        edges: newEdges.length,
-      });
       return { nodes: layoutedNodes, edges: newEdges };
-    } catch (error) {
-      console.error('Dagre layout error:', error);
+    } catch (e) {
+      console.error('Dagre layout error:', e);
       return { nodes: newNodes, edges: newEdges };
     }
   }, []);
 
-  // 비활성 노드/엣지 투명도 (너무 어둡지 않게)
-  const DIMMED_OPACITY = 0.7;
-
-  // 선택한 데이터셋(테이블)에 해당하는 데이터 흐름만 하이라이트하는 그래프
+  // 선택 데이터셋 하이라이트(생략: 기존 로직 유지) --------------------------
   const buildDatasetGraph = useCallback(
     (schemaLineageData, lineageData) => {
       if (
@@ -725,22 +708,13 @@ const Lineage = () => {
       ) {
         return { nodes: [], edges: [] };
       }
-
-      // 1) 데이터 관점 그래프를 기반으로 (레이아웃 재사용)
       const { nodes: baseNodes, edges: baseEdges } = buildDataGraph(lineageData);
       if (!baseNodes.length) return { nodes: [], edges: [] };
 
-      // 2) 선택된 테이블 (드롭다운에서 고른 데이터셋)
       const table = schemaLineageData.tables[0];
       const tableName = (table.name || '').toLowerCase();
-
-      // evaluation 전용 등 약간의 동의어 매핑
       const synonyms = [tableName].filter(Boolean);
-
-      // "evaluation" 스키마가 실제로 evaluate.py / Evaluate 로 표시되는 케이스 대응
-      if (tableName === 'evaluation') {
-        synonyms.push('evaluate', 'eval');
-      }
+      if (tableName === 'evaluation') synonyms.push('evaluate', 'eval');
 
       const linkUris = [
         ...(table.links || []),
@@ -750,30 +724,18 @@ const Lineage = () => {
       ]
         .map(String)
         .filter(Boolean);
-
       const explicitLinks = new Set(linkUris);
 
-      // URI 매칭 (train / validation / evaluation 모두 커버)
       const isUriMatch = (uriRaw) => {
         if (!uriRaw) return false;
         const uri = String(uriRaw);
         const lower = uri.toLowerCase();
-
-        // 1) schema에서 내려온 링크 기준
-        if (explicitLinks.size) {
-          for (const link of explicitLinks) {
-            if (!link) continue;
-            if (uri === link) return true;
-            if (uri.startsWith(link)) return true;
-          }
+        for (const link of explicitLinks) {
+          if (!link) continue;
+          if (uri === link || uri.startsWith(link)) return true;
         }
-
-        if (!synonyms.length) return false;
-
-        // 테이블 이름 + 동의어들 기준으로 uri 매칭
         for (const name of synonyms) {
           if (!name) continue;
-
           if (lower.includes(`/${name}/`)) return true;
           if (lower.endsWith(`/${name}`)) return true;
           if (lower.endsWith(`/${name}.csv`)) return true;
@@ -781,20 +743,15 @@ const Lineage = () => {
           if (lower.includes(`/${name}_`)) return true;
           if (lower.includes(`_${name}.`)) return true;
         }
-
-        // evaluation 계열 추가 heuristics (폴더/파일명이 eval* 인 경우)
         if (tableName === 'evaluation') {
           if (lower.includes('/eval/')) return true;
           if (lower.endsWith('/eval')) return true;
           if (lower.includes('_eval')) return true;
           if (lower.includes('evaluate')) return true;
         }
-
-        // 기본적으로 매치되지 않으면 false 반환
         return false;
       };
 
-      // dataArtifact 노드만 대상으로 seed 찾기 (nodeData 기준)
       const dataNodes = baseNodes.filter((n) => {
         const t = n.data?.nodeData?.type || n.data?.type || n.type;
         return t === 'dataArtifact';
@@ -809,91 +766,68 @@ const Lineage = () => {
           .map((n) => n.id)
       );
 
-      // seed를 못 찾으면 기본 그래프를 연하게 보여줌
       if (seedIds.size === 0) {
-        const DIMMED_OPACITY = 0.25;
-
-        const nodes = baseNodes.map((n) => ({
-          ...n,
-          style: {
-            ...(n.style || {}),
-            opacity: DIMMED_OPACITY,
-          },
-          data: {
-            ...(n.data || {}),
-            isDimmed: true,
-          },
-        }));
-
-        const edges = baseEdges.map((e) => ({
-          ...e,
-          style: {
-            ...(e.style || {}),
-            opacity: DIMMED_OPACITY,
-          },
-        }));
-
-        return { nodes, edges };
+        const DIM = 0.25;
+        return {
+          nodes: baseNodes.map((n) => ({
+            ...n,
+            style: { ...(n.style || {}), opacity: DIM },
+            data: { ...(n.data || {}), isDimmed: true },
+          })),
+          edges: baseEdges.map((e) => ({
+            ...e,
+            style: { ...(e.style || {}), opacity: DIM },
+          })),
+        };
       }
 
-      // seed 및 인접 노드 활성화
       const activeNodeIds = new Set(seedIds);
       const activeEdgeIds = new Set();
-
       baseEdges.forEach((e) => {
-        const { source, target, id } = e;
-        const sourceIsSeed = seedIds.has(source);
-        const targetIsSeed = seedIds.has(target);
-
+        const sourceIsSeed = seedIds.has(e.source);
+        const targetIsSeed = seedIds.has(e.target);
         if (sourceIsSeed && !targetIsSeed) {
-          activeNodeIds.add(target);
-          activeEdgeIds.add(id);
+          activeNodeIds.add(e.target);
+          activeEdgeIds.add(e.id);
         } else if (targetIsSeed && !sourceIsSeed) {
-          activeNodeIds.add(source);
-          activeEdgeIds.add(id);
+          activeNodeIds.add(e.source);
+          activeEdgeIds.add(e.id);
         }
       });
 
-      // 스타일 적용 (비해당 노드는 연하지만 보이도록)
-      const DIMMED_OPACITY = 0.3;
-
-      const nodes = baseNodes.map((n) => {
-        const active = activeNodeIds.has(n.id);
-        return {
-          ...n,
-          style: {
-            ...(n.style || {}),
-            opacity: active ? 1 : DIMMED_OPACITY,
-          },
-          data: {
-            ...(n.data || {}),
-            isDimmed: !active,
-          },
-        };
-      });
-
-      const edges = baseEdges.map((e) => {
-        const active = activeEdgeIds.has(e.id);
-        return {
-          ...e,
-          style: {
-            ...(e.style || {}),
-            opacity: active ? 1 : DIMMED_OPACITY,
-          },
-          animated: active && e.animated,
-        };
-      });
-
-      return { nodes, edges };
+      const DIM = 0.3;
+      return {
+        nodes: baseNodes.map((n) => {
+          const active = activeNodeIds.has(n.id);
+          return {
+            ...n,
+            style: { ...(n.style || {}), opacity: active ? 1 : DIM },
+            data: { ...(n.data || {}), isDimmed: !active },
+          };
+        }),
+        edges: baseEdges.map((e) => {
+          const active = activeEdgeIds.has(e.id);
+          return {
+            ...e,
+            style: { ...(e.style || {}), opacity: active ? 1 : DIM },
+            animated: active && e.animated,
+          };
+        }),
+      };
     },
     [buildDataGraph]
   );
 
-  // 라인리지 / 스키마 변경 → 그래프 생성
+  // ─────────────────────────────────────────────────────────────
+  // 데이터 로딩 & 그래프 갱신
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
+  }, [loadPipelines]);
+
   useEffect(() => {
     if (!lineageData) return;
 
-    // 1) 데이터셋(스키마) 관점
     if (viewMode === 'schema' && schemaLineageData) {
       const { nodes, edges } = buildDatasetGraph(schemaLineageData, lineageData);
       setNodes(nodes);
@@ -901,10 +835,9 @@ const Lineage = () => {
       setSelectedNode(null);
       setSelectedNodeData(null);
       setShowPanel(false);
-      return; // 중요: 아래 기본 그래프 로직으로 내려가지 않게
+      return;
     }
 
-    // 2) 파이프라인 / 데이터 전체 관점
     if (viewMode === 'pipeline') {
       const { nodes, edges } = buildPipelineGraph(lineageData);
       setNodes(nodes);
@@ -928,33 +861,28 @@ const Lineage = () => {
     buildDatasetGraph,
   ]);
 
+  // ─────────────────────────────────────────────────────────────
+  // 핸들러
+  // ─────────────────────────────────────────────────────────────
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
     setSelectedNode(null);
     setShowPanel(false);
     setSelectedNodeData(null);
-    if (mode !== 'schema') {
-      setSelectedSchema(null); // 스키마 모드 벗어나면 해제
-    }
+    if (mode !== 'schema') setSelectedSchema(null);
   };
 
-  // 파이프라인 선택/로드
   const handlePipelineSelect = useCallback(
     async (pipeline) => {
       setSelectedPipeline(pipeline);
-      setShowPipelineList(false);
       setShowDropdown(false);
       setViewMode('pipeline');
       setSelectedSchema(null);
 
       const region = pipeline.region || 'ap-northeast-2';
       let domain = null;
-
-      if (pipeline.matchedDomain?.domainName) {
-        domain = pipeline.matchedDomain.domainName;
-      } else if (pipeline.tags?.DomainName) {
-        domain = pipeline.tags.DomainName;
-      }
+      if (pipeline.matchedDomain?.domainName) domain = pipeline.matchedDomain.domainName;
+      else if (pipeline.tags?.DomainName) domain = pipeline.tags.DomainName;
 
       await loadLineage(pipeline.name, region, domain);
     },
@@ -964,16 +892,13 @@ const Lineage = () => {
   const handleSchemaSelect = useCallback(
     async (schema) => {
       if (!schema || !selectedPipeline) return;
-
       setSelectedSchema(schema);
       setShowSchemaDropdown(false);
-
       await loadSchemaLineage(
         schema.name,
         selectedPipeline.name,
         selectedPipeline.region || 'ap-northeast-2'
       );
-
       setViewMode('schema');
       setShowPanel(false);
       setSelectedNode(null);
@@ -981,16 +906,10 @@ const Lineage = () => {
     [loadSchemaLineage, selectedPipeline]
   );
 
-  useEffect(() => {
-    loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
-  }, [loadPipelines]);
-
   const handleDomainSelect = (domain) => {
     setSelectedDomain(domain);
     setShowDomainDropdown(false);
     setSelectedPipeline(null);
-    setShowPipelineList(true);
-
     setNodes([]);
     setEdges([]);
     setSelectedNode(null);
@@ -998,9 +917,28 @@ const Lineage = () => {
     setSelectedNodeData(null);
   };
 
+  const getDomainPipelineCount = (domainId) => {
+    if (domainId === '__untagged__') {
+      return pipelines.filter((p) => {
+        const hasDomainTag = p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
+        return !hasDomainTag;
+      }).length;
+    }
+    return pipelines.filter((p) => {
+      if (p.matchedDomain) return p.matchedDomain.domainId === domainId;
+      if (p.tags && p.tags['sagemaker:domain-arn']) {
+        return p.tags['sagemaker:domain-arn'].includes(domainId);
+      }
+      return false;
+    }).length;
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // 렌더링
+  // ─────────────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      {/* 헤더 영역 - 한 줄로 간소화 */}
+      {/* 헤더 */}
       <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm flex-shrink-0">
         <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
 
@@ -1019,18 +957,12 @@ const Lineage = () => {
             <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
               <div
                 onClick={() =>
-                  handleDomainSelect({
-                    id: '__all__',
-                    name: '전체 도메인',
-                    region: 'ap-northeast-2',
-                  })
+                  handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })
                 }
                 className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
               >
                 <div className="font-medium text-sm">전체 도메인</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  모든 파이프라인 ({pipelines.length}개)
-                </div>
+                <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
               </div>
 
               {domainsSafe.map((domain) => (
@@ -1048,18 +980,12 @@ const Lineage = () => {
 
               <div
                 onClick={() =>
-                  handleDomainSelect({
-                    id: '__untagged__',
-                    name: '태그 없음',
-                    region: 'ap-northeast-2',
-                  })
+                  handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })
                 }
                 className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
               >
                 <div className="font-medium text-sm">태그 없음</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {getDomainPipelineCount('__untagged__')}개
-                </div>
+                <div className="text-xs text-gray-500 mt-1">{getDomainPipelineCount('__untagged__')}개</div>
               </div>
             </div>
           )}
@@ -1089,12 +1015,29 @@ const Lineage = () => {
 
           {showDropdown && !loadingPipelines && (
             <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-              {filteredPipelines.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-500">
-                  파이프라인이 없습니다
-                </div>
-              ) : (
-                filteredPipelines.map((pipeline) => (
+              {(() => {
+                const list =
+                  selectedDomain.id === '__all__'
+                    ? pipelines
+                    : selectedDomain.id === '__untagged__'
+                    ? pipelines.filter((p) => {
+                        const hasDomainTag =
+                          p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
+                        return !hasDomainTag;
+                      })
+                    : pipelines.filter((p) => {
+                        if (p.matchedDomain) return p.matchedDomain.domainId === selectedDomain.id;
+                        if (p.tags && p.tags['sagemaker:domain-arn']) {
+                          return p.tags['sagemaker:domain-arn'].includes(selectedDomain.id);
+                        }
+                        return false;
+                      });
+
+                if (list.length === 0) {
+                  return <div className="px-4 py-8 text-center text-gray-500">파이프라인이 없습니다</div>;
+                }
+
+                return list.map((pipeline) => (
                   <div
                     key={pipeline.arn}
                     onClick={() => handlePipelineSelect(pipeline)}
@@ -1103,13 +1046,13 @@ const Lineage = () => {
                     <div className="font-medium text-sm">{pipeline.name}</div>
                     <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
                   </div>
-                ))
-              )}
+                ));
+              })()}
             </div>
           )}
         </div>
 
-        {/* 관점 전환 버튼 */}
+        {/* 관점 전환 & 스키마 */}
         {selectedPipeline && lineageData && (
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -1135,7 +1078,6 @@ const Lineage = () => {
               <span className="text-sm font-medium">데이터 관점</span>
             </button>
 
-            {/* 스키마 선택 드롭다운 */}
             <div className="relative ml-2">
               <button
                 onClick={async () => {
@@ -1149,17 +1091,14 @@ const Lineage = () => {
                   }
                 }}
                 disabled={!selectedPipeline}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors
-                  ${
-                    viewMode === 'schema'
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  viewMode === 'schema'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
               >
                 <span className="text-sm font-medium">
-                  <button>
-                    {selectedSchema ? `데이터셋: ${selectedSchema.name}` : '데이터셋 선택'}
-                  </button>
+                  {selectedSchema ? `데이터셋: ${selectedSchema.name}` : '데이터셋 선택'}
                 </span>
                 <ChevronDown className="w-4 h-4" />
               </button>
@@ -1176,9 +1115,7 @@ const Lineage = () => {
                           key={table.name}
                           onClick={() => handleSchemaSelect(table)}
                           className={`px-4 py-2 cursor-pointer border-b ${
-                            isActive
-                              ? 'bg-blue-50 text-blue-700 font-semibold'
-                              : 'hover:bg-gray-50'
+                            isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-gray-50'
                           }`}
                         >
                           <div className="font-medium text-sm">{table.name}</div>
@@ -1189,9 +1126,7 @@ const Lineage = () => {
                       );
                     })
                   ) : (
-                    <div className="text-center py-4 text-gray-500">
-                      데이터셋 정보가 없습니다
-                    </div>
+                    <div className="text-center py-4 text-gray-500">데이터셋 정보가 없습니다</div>
                   )}
                 </div>
               )}
@@ -1199,12 +1134,10 @@ const Lineage = () => {
           </div>
         )}
 
-        {/* 닫기 버튼 */}
         {selectedPipeline && (
           <button
             onClick={() => {
               setSelectedPipeline(null);
-              setShowPipelineList(true);
               setNodes([]);
               setEdges([]);
             }}
@@ -1215,10 +1148,10 @@ const Lineage = () => {
         )}
       </div>
 
-      {/* 본문 영역 - 남은 공간 차지 */}
+      {/* 본문 */}
       <div className="flex-1 min-h-0 relative">
         {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-white/75 z-10">
             <div className="text-center">
               <Loader className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-2" />
               <p className="text-gray-600">라인리지를 불러오는 중...</p>
@@ -1258,6 +1191,7 @@ const Lineage = () => {
           </div>
         )}
 
+        {/* 상세 패널 */}
         {showPanel && selectedNodeData && (
           <div className="absolute right-0 top-0 bottom-0 w-96 bg-white border-l border-gray-200 shadow-lg overflow-y-auto z-20">
             <div className="p-4">
@@ -1275,22 +1209,19 @@ const Lineage = () => {
               </div>
 
               <div className="space-y-6 text-sm">
-                {/* Basic Information Section */}
+                {/* Basic Information */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                    <div className="w-1 h-5 bg-blue-600 rounded" />
                     <h4 className="font-bold text-gray-800">Basic Information</h4>
                   </div>
                   <div className="space-y-3 pl-3">
-                    {/* Step ID */}
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Step ID</div>
                       <div className="font-medium break-all">
                         {selectedNodeData.id || selectedNodeData.label}
                       </div>
                     </div>
-
-                    {/* Type */}
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Type</div>
                       <div className="font-medium">
@@ -1298,22 +1229,8 @@ const Lineage = () => {
                       </div>
                     </div>
 
-                    {/* Status - processNode만 */}
-                    {selectedNodeData.type === 'processNode' &&
-                      selectedNodeData.run?.status && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Status</div>
-                          <div className="flex items-center gap-2">
-                            {getStatusIcon(selectedNodeData.run.status)}
-                            <span className="font-medium">
-                              {safeValue(selectedNodeData.run.status)}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                    {/* Status - 파이프라인 관점 */}
-                    {viewMode === 'pipeline' && selectedNodeData.run?.status && (
+                    {/* 상태 */}
+                    {selectedNodeData.run?.status && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Status</div>
                         <div className="flex items-center gap-2">
@@ -1325,7 +1242,6 @@ const Lineage = () => {
                       </div>
                     )}
 
-                    {/* Job Name */}
                     {selectedNodeData.run?.jobName && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Job Name</div>
@@ -1334,8 +1250,6 @@ const Lineage = () => {
                         </div>
                       </div>
                     )}
-
-                    {/* Job ARN */}
                     {selectedNodeData.run?.jobArn && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Job ARN</div>
@@ -1347,36 +1261,30 @@ const Lineage = () => {
                   </div>
                 </div>
 
-                {/* Execution Info Section - processNode만 */}
-                {selectedNodeData.type === 'processNode' && selectedNodeData.run && (
+                {/* Execution Info */}
+                {selectedNodeData.run && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                      <div className="w-1 h-5 bg-blue-600 rounded" />
                       <h4 className="font-bold text-gray-800">Execution Info</h4>
                     </div>
                     <div className="space-y-3 pl-3">
-                      {/* Start Time */}
                       {selectedNodeData.run.startTime && (
                         <div>
                           <div className="text-xs text-gray-500 mb-1">Start Time</div>
                           <div className="font-medium">
-                            {new Date(selectedNodeData.run.startTime).toLocaleString(
-                              'ko-KR',
-                              {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: false,
-                              }
-                            )}
+                            {new Date(selectedNodeData.run.startTime).toLocaleString('ko-KR', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: false,
+                            })}
                           </div>
                         </div>
                       )}
-
-                      {/* End Time */}
                       {selectedNodeData.run.endTime && (
                         <div>
                           <div className="text-xs text-gray-500 mb-1">End Time</div>
@@ -1393,8 +1301,6 @@ const Lineage = () => {
                           </div>
                         </div>
                       )}
-
-                      {/* Duration */}
                       {selectedNodeData.run.elapsedSec != null && (
                         <div>
                           <div className="text-xs text-gray-500 mb-1">Duration</div>
@@ -1407,71 +1313,11 @@ const Lineage = () => {
                   </div>
                 )}
 
-                {/* Execution Info Section - 파이프라인 관점 */}
-                {viewMode === 'pipeline' && selectedNodeData.run && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
-                      <h4 className="font-bold text-gray-800">Execution Info</h4>
-                    </div>
-                    <div className="space-y-3 pl-3">
-                      {/* Start Time */}
-                      {selectedNodeData.run.startTime && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Start Time</div>
-                          <div className="font-medium">
-                            {new Date(selectedNodeData.run.startTime).toLocaleString(
-                              'ko-KR',
-                              {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: false,
-                              }
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* End Time */}
-                      {selectedNodeData.run.endTime && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">End Time</div>
-                          <div className="font-medium">
-                            {new Date(selectedNodeData.run.endTime).toLocaleString('ko-KR', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                              hour12: false,
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Duration */}
-                      {selectedNodeData.run.elapsedSec != null && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Duration</div>
-                          <div className="font-medium">
-                            {formatDuration(selectedNodeData.run.elapsedSec)}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Data Location Section - dataArtifact만 */}
+                {/* Data Location (dataArtifact 전용) */}
                 {selectedNodeData.type === 'dataArtifact' && selectedNodeData.uri && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                      <div className="w-1 h-5 bg-blue-600 rounded" />
                       <h4 className="font-bold text-gray-800">Data Location</h4>
                     </div>
                     <div className="space-y-3 pl-3">
@@ -1482,31 +1328,31 @@ const Lineage = () => {
                       {selectedNodeData.meta?.s3 && (
                         <>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Bucket:</div>
+                            <div className="text-xs text-gray-500 mb-1">Bucket</div>
                             <div className="font-medium">
                               {selectedNodeData.meta.s3.bucket}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Region:</div>
+                            <div className="text-xs text-gray-500 mb-1">Region</div>
                             <div className="font-medium">
                               {selectedNodeData.meta.s3.region}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Encryption:</div>
+                            <div className="text-xs text-gray-500 mb-1">Encryption</div>
                             <div className="font-medium">
                               {selectedNodeData.meta.s3.encryption}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Versioning:</div>
+                            <div className="text-xs text-gray-500 mb-1">Versioning</div>
                             <div className="font-medium">
                               {selectedNodeData.meta.s3.versioning}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Public Access:</div>
+                            <div className="text-xs text-gray-500 mb-1">Public Access</div>
                             <div
                               className={`font-medium ${
                                 selectedNodeData.meta.s3.publicAccess === 'Blocked'
@@ -1523,144 +1369,159 @@ const Lineage = () => {
                   </div>
                 )}
 
-                {/* Inputs Section - 파이프라인 관점만 (viewMode === 'pipeline') */}
-                {viewMode === 'pipeline' &&
-                  selectedNodeData.inputs &&
-                  selectedNodeData.inputs.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-1 h-5 bg-blue-600 rounded"></div>
-                        <h4 className="font-bold text-gray-800">
-                          Inputs ({selectedNodeData.inputs.length})
+                {/* ⚠️ PII Detection (dataArtifact 전용) */}
+                {selectedNodeData.type === 'dataArtifact' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1 h-5 bg-red-600 rounded" />
+                        <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                          PII Detection
+                          <ShieldAlert className="w-4 h-4 text-red-600" />
                         </h4>
                       </div>
-                      <div className="space-y-3 pl-3">
-                        {selectedNodeData.inputs.map((input, idx) => {
-                          const uri = safeValue(input.uri);
-                          const isS3Uri = uri.startsWith('s3://');
-                          const bucket = isS3Uri ? uri.split('/')[2] : null;
+                      <button
+                        onClick={() => setRevealPII((v) => !v)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                        title={revealPII ? '가려보기' : '일부 보기'}
+                      >
+                        {revealPII ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        {revealPII ? 'Mask' : 'Unmask'}
+                      </button>
+                    </div>
 
-                          return (
-                            <div key={idx} className="border-l-2 border-blue-200 pl-3">
-                              <div className="font-semibold text-sm mb-2">{input.name}</div>
-                              <div className="font-mono text-xs break-all text-blue-600 bg-blue-50 p-2 rounded mb-2">
-                                {uri}
+                    {(() => {
+                      const { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore } =
+                        extractPIIMeta({ nodeData: selectedNodeData });
+
+                      return (
+                        <div className="space-y-3 pl-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Has PII</span>
+                            <span
+                              className={`px-2 py-0.5 text-xs rounded-full border ${
+                                hasPII
+                                  ? 'bg-red-50 text-red-700 border-red-200'
+                                  : 'bg-green-50 text-green-700 border-green-200'
+                              }`}
+                            >
+                              {hasPII ? 'Yes' : 'No'}
+                            </span>
+                            {typeof riskScore === 'number' && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                Risk Score:{' '}
+                                <span
+                                  className={`font-semibold ${
+                                    riskScore >= 70
+                                      ? 'text-red-600'
+                                      : riskScore >= 40
+                                      ? 'text-yellow-600'
+                                      : 'text-green-600'
+                                  }`}
+                                >
+                                  {riskScore}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+
+                          {types?.length > 0 && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Types</div>
+                              <div className="flex flex-wrap gap-1">
+                                {types.map((t, i) => (
+                                  <span
+                                    key={`${t}-${i}`}
+                                    className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border border-gray-200"
+                                  >
+                                    {t}
+                                  </span>
+                                ))}
                               </div>
-                              {isS3Uri && bucket && (
-                                <div className="space-y-1 text-xs">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Bucket:</span>
-                                    <span className="font-mono">{bucket}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Region:</span>
-                                    <span>{selectedNodeData.meta?.s3?.region || 'Unknown'}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Encryption:</span>
-                                    <span>
-                                      {selectedNodeData.meta?.s3?.encryption || 'Unknown'}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Versioning:</span>
-                                    <span>
-                                      {selectedNodeData.meta?.s3?.versioning || 'Unknown'}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Public Access:</span>
-                                    <span
-                                      className={
-                                        selectedNodeData.meta?.s3?.publicAccess === 'Blocked'
-                                          ? 'text-green-600 font-medium'
-                                          : 'text-red-600 font-medium'
-                                      }
+                            </div>
+                          )}
+
+                          {fields?.length > 0 && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Fields</div>
+                              <div className="flex flex-wrap gap-1">
+                                {fields.map((f, i) => (
+                                  <span
+                                    key={`${f}-${i}`}
+                                    className="px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200"
+                                  >
+                                    {f}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {sampleValues?.length > 0 && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Samples</div>
+                              <ul className="space-y-1">
+                                {sampleValues.slice(0, 5).map((v, i) => {
+                                  const masked =
+                                    typeof v === 'string' && !revealPII
+                                      ? v.replace(/[\S]/g, (c, idx) => (idx % 3 === 0 ? c : '•'))
+                                      : v;
+                                  return (
+                                    <li
+                                      key={`sv-${i}`}
+                                      className="font-mono text-xs break-all bg-gray-50 border border-gray-200 rounded px-2 py-1"
                                     >
-                                      {selectedNodeData.meta?.s3?.publicAccess || 'Unknown'}
-                                    </span>
-                                  </div>
+                                      {masked}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                              {!revealPII && (
+                                <div className="text-[11px] text-gray-500 mt-1">
+                                  일부 문자는 마스킹되어 표시됩니다.
                                 </div>
                               )}
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                          )}
 
-                {/* Outputs Section - 파이프라인 관점만 (viewMode === 'pipeline') */}
-                {viewMode === 'pipeline' &&
-                  selectedNodeData.outputs &&
-                  selectedNodeData.outputs.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-1 h-5 bg-blue-600 rounded"></div>
-                        <h4 className="font-bold text-gray-800">
-                          Outputs ({selectedNodeData.outputs.length})
-                        </h4>
-                      </div>
-                      <div className="space-y-3 pl-3">
-                        {selectedNodeData.outputs.map((output, idx) => {
-                          const uri = safeValue(output.uri);
-                          const isS3Uri = uri.startsWith('s3://');
-                          const bucket = isS3Uri ? uri.split('/')[2] : null;
-
-                          return (
-                            <div key={idx} className="border-l-2 border-green-200 pl-3">
-                              <div className="font-semibold text-sm mb-2">{output.name}</div>
-                              <div className="font-mono text-xs break-all text-green-600 bg-green-50 p-2 rounded mb-2">
-                                {uri}
-                              </div>
-                              {isS3Uri && bucket && (
-                                <div className="space-y-1 text-xs">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Bucket:</span>
-                                    <span className="font-mono">{bucket}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Region:</span>
-                                    <span>{selectedNodeData.meta?.s3?.region || 'Unknown'}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Encryption:</span>
-                                    <span>
-                                      {selectedNodeData.meta?.s3?.encryption || 'Unknown'}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Versioning:</span>
-                                    <span>
-                                      {selectedNodeData.meta?.s3?.versioning || 'Unknown'}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">Public Access:</span>
-                                    <span
-                                      className={
-                                        selectedNodeData.meta?.s3?.publicAccess === 'Blocked'
-                                          ? 'text-green-600 font-medium'
-                                          : 'text-red-600 font-medium'
-                                      }
-                                    >
-                                      {selectedNodeData.meta?.s3?.publicAccess || 'Unknown'}
-                                    </span>
-                                  </div>
-                                </div>
+                          {(lastScanAt || scanner) && (
+                            <div className="text-xs text-gray-500">
+                              {scanner && <span>Scanner: {scanner}</span>}
+                              {scanner && lastScanAt && <span className="mx-1">·</span>}
+                              {lastScanAt && (
+                                <span>
+                                  Last Scan:{' '}
+                                  {new Date(lastScanAt).toLocaleString('ko-KR', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: false,
+                                  })}
+                                </span>
                               )}
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                          )}
+
+                          {!hasPII && types.length === 0 && fields.length === 0 && (
+                            <div className="text-xs text-gray-500">
+                              스캔 결과 PII 항목이 발견되지 않았습니다.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* 하단 통계 영역 - 128px 고정 */}
+      {/* 하단 요약 */}
       {selectedPipeline && lineageData?.summary && (
         <div className="h-32 p-4 bg-white border-t border-gray-200 flex-shrink-0">
           <div className="grid grid-cols-4 gap-4 h-full">
@@ -1668,9 +1529,7 @@ const Lineage = () => {
               <p className="text-sm text-gray-600">Overall Status</p>
               <div className="flex items-center gap-2 mt-1">
                 {getStatusIcon(lineageData.summary.overallStatus)}
-                <p className="text-xl font-bold">
-                  {safeValue(lineageData.summary.overallStatus)}
-                </p>
+                <p className="text-xl font-bold">{safeValue(lineageData.summary.overallStatus)}</p>
               </div>
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm border">
@@ -1685,9 +1544,7 @@ const Lineage = () => {
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm border">
               <p className="text-sm text-gray-600">Duration</p>
-              <p className="text-2xl font-bold">
-                {formatDuration(lineageData.summary.elapsedSec)}
-              </p>
+              <p className="text-2xl font-bold">{formatDuration(lineageData.summary.elapsedSec)}</p>
             </div>
           </div>
         </div>
