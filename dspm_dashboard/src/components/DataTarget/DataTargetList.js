@@ -1,4 +1,4 @@
-// src/components/DataTarget/DataTargetList.js - RDS 스캔도 항상 실행
+// src/components/DataTarget/DataTargetList.js - 스캔과 조회 분리
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ResourceCard from './ResourceCard';
@@ -74,28 +74,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
   };
 
-  // 콜렉터 실행 (파일 저장만)
-  const handleRunCollector = async () => {
-    if (window.confirm('콜렉터를 실행하여 최신 데이터를 수집하시겠습니까? (수 분 소요될 수 있습니다)')) {
-      setIsCollecting(true);
-      
-      try {
-        console.log('콜렉터 실행 시작...');
-        const response = await aegisApi.runCollector();
-        
-        console.log('콜렉터 실행 완료:', response);
-        alert('데이터 수집이 완료되었습니다. 이제 리소스를 선택하여 위협 식별을 시작할 수 있습니다.');
-        
-      } catch (error) {
-        console.error('콜렉터 실행 실패:', error);
-        alert('콜렉터 실행 중 오류가 발생했습니다: ' + error.message);
-      } finally {
-        setIsCollecting(false);
-      }
-    }
-  };
-
-  // RDS 자동 스캔 실행 (항상 실행)
+  // RDS 자동 스캔 실행
   const runRdsAutoScan = async () => {
     try {
       console.log('=== RDS 자동 스캔 시작 ===');
@@ -127,7 +106,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
   };
 
-  // RDS-S3 교차 검증 실행 (항상 실행)
+  // RDS-S3 교차 검증 실행
   const runCrossCheck = async () => {
     try {
       console.log('=== RDS-S3 교차 검증 시작 ===');
@@ -160,7 +139,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
   };
 
-  // 교차 검증 리포트 조회 (항상 실행)
+  // 교차 검증 리포트 조회 (스캔 없이 저장된 결과만 가져오기)
   const getCrossCheckReport = async () => {
     try {
       console.log('=== 교차 검증 리포트 조회 시작 ===');
@@ -184,7 +163,53 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
   };
 
-  // 위협 식별 (저장된 결과 조회 + RDS 스캔 + 보유기간 체크 - 모두 항상 실행)
+  // 콜렉터 실행 + 전체 스캔 (파일 저장 + RDS 스캔 + 교차 검증)
+  const handleRunCollector = async () => {
+    if (window.confirm('콜렉터를 실행하여 최신 데이터를 수집하고 스캔하시겠습니까? (수 분 소요될 수 있습니다)')) {
+      setIsCollecting(true);
+      console.log('\n========== 콜렉터 및 전체 스캔 시작 ==========\n');
+      
+      try {
+        // Step 1: 데이터 수집 (콜렉터 실행)
+        console.log('[1/3] 데이터 수집 시작...');
+        const collectorResponse = await aegisApi.runCollector();
+        console.log('✓ Step 1 완료: 데이터 수집');
+        
+        // Step 2: RDS 자동 스캔
+        console.log('\n[2/3] RDS 자동 스캔 시작...');
+        try {
+          await runRdsAutoScan();
+          console.log('✓ Step 2 완료: RDS 자동 스캔');
+        } catch (error) {
+          console.error('✗ Step 2 실패: RDS 자동 스캔');
+          console.error('에러:', error);
+          // 실패해도 계속 진행
+        }
+        
+        // Step 3: RDS-S3 교차 검증
+        console.log('\n[3/3] RDS-S3 교차 검증 시작...');
+        try {
+          await runCrossCheck();
+          console.log('✓ Step 3 완료: RDS-S3 교차 검증');
+        } catch (error) {
+          console.error('✗ Step 3 실패: RDS-S3 교차 검증');
+          console.error('에러:', error);
+          // 실패해도 계속 진행
+        }
+        
+        console.log('\n========== 모든 스캔 완료 ==========\n');
+        alert('데이터 수집 및 스캔이 완료되었습니다. 이제 리소스를 선택하여 위협 식별 결과를 조회할 수 있습니다.');
+        
+      } catch (error) {
+        console.error('콜렉터 실행 실패:', error);
+        alert('콜렉터 실행 중 오류가 발생했습니다: ' + error.message);
+      } finally {
+        setIsCollecting(false);
+      }
+    }
+  };
+
+  // 위협 식별 결과 조회 (저장된 결과만 조회)
   const handleSendToAnalyzer = async () => {
     if (selectedResources.size === 0) {
       alert('위협 식별할 저장소를 선택해주세요.');
@@ -192,7 +217,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
 
     setIsSending(true);
-    console.log('\n========== 통합 검증 프로세스 시작 ==========\n');
+    console.log('\n========== 위협 식별 결과 조회 시작 ==========\n');
 
     try {
       const selectedItems = inventoryData.filter(item => 
@@ -206,65 +231,35 @@ const DataTargetList = ({ inventoryData, loading }) => {
       const hasRds = rdsInstances.length > 0;
 
       console.log('RDS 인스턴스 포함 여부:', hasRds);
-      console.log('RDS 인스턴스 개수:', rdsInstances.length);
 
-      let rdsAutoResult = null;
-      let crossCheckResult = null;
-      let crossCheckReport = null;
-
-      // Step 1: RDS 자동 스캔 (항상 실행)
-      console.log('\n[1/4] RDS 자동 스캔 시작 (항상 실행)...');
-      
-      try {
-        rdsAutoResult = await runRdsAutoScan();
-        console.log('✓ Step 1 완료: RDS 자동 스캔');
-      } catch (error) {
-        console.error('✗ Step 1 실패: RDS 자동 스캔');
-        console.error('에러:', error);
-        // RDS 스캔 실패해도 계속 진행
-      }
-
-      // Step 2: 일반 위협 식별 결과 조회 (S3, EBS 등)
-      console.log('\n[2/4] 위협 식별 결과 조회 시작...');
+      // Step 1: 위협 식별 결과 조회
+      console.log('\n[1/2] 위협 식별 결과 조회 시작...');
       
       let results = null;
       try {
         results = await aegisApi.getFrontList();
-        console.log('✓ Step 2 완료: 위협 식별 결과 조회');
+        console.log('✓ Step 1 완료: 위협 식별 결과 조회');
         console.log('조회된 결과:', results);
       } catch (error) {
-        console.error('✗ Step 2 실패: 위협 식별 결과 조회');
+        console.error('✗ Step 1 실패: 위협 식별 결과 조회');
         console.error('에러:', error);
       }
 
-      // Step 3: 보유기간 만료 체크 (RDS-S3 교차 검증) - 항상 실행
-      console.log('\n[3/4] 보유기간 만료 체크 (RDS-S3 교차 검증) 시작 (항상 실행)...');
+      // Step 2: 교차 검증 리포트 조회 (저장된 결과만)
+      console.log('\n[2/2] 보유기간 만료 리포트 조회 시작...');
       
-      try {
-        crossCheckResult = await runCrossCheck();
-        console.log('✓ Step 3 완료: RDS-S3 교차 검증');
-      } catch (error) {
-        console.error('✗ Step 3 실패: RDS-S3 교차 검증');
-        console.error('에러:', error);
-        // 실패해도 계속 진행
-      }
-
-      // Step 4: 교차 검증 리포트 조회 - 항상 실행
-      console.log('\n[4/4] 교차 검증 리포트 조회 시작 (항상 실행)...');
-      
+      let crossCheckReport = null;
       try {
         crossCheckReport = await getCrossCheckReport();
-        console.log('✓ Step 4 완료: 교차 검증 리포트 조회');
+        console.log('✓ Step 2 완료: 보유기간 만료 리포트 조회');
       } catch (error) {
-        console.error('✗ Step 4 실패: 교차 검증 리포트 조회');
+        console.error('✗ Step 2 실패: 보유기간 만료 리포트 조회');
         console.error('에러:', error);
       }
 
-      console.log('\n========== 모든 스캔 완료 ==========\n');
+      console.log('\n========== 결과 조회 완료 ==========\n');
       console.log('결과 요약:');
-      console.log('- RDS 자동 스캔:', rdsAutoResult ? '성공' : '실패');
       console.log('- 위협 식별:', results ? '성공' : '실패');
-      console.log('- 교차 검증:', crossCheckResult ? '성공' : '실패');
       console.log('- 리포트:', crossCheckReport ? '성공' : '실패');
 
       // 결과 페이지로 이동
@@ -275,8 +270,6 @@ const DataTargetList = ({ inventoryData, loading }) => {
           timestamp: new Date().toISOString(),
           selectedItems: selectedItems,
           results: results,
-          rdsAutoResult: rdsAutoResult,
-          crossCheckResult: crossCheckResult,
           crossCheckReport: crossCheckReport,
           hasRds: hasRds
         }
@@ -312,7 +305,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
             </div>
             
             <div className="flex items-center gap-2">
-              {/* 콜렉터 실행 버튼 */}
+              {/* 콜렉터 실행 버튼 - 스캔 포함 */}
               <button
                 onClick={handleRunCollector}
                 disabled={isCollecting}
@@ -324,7 +317,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    수집 중...
+                    수집 및 스캔 중...
                   </>
                 ) : (
                   <>
@@ -347,7 +340,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
                 {filteredResources.length > 0 && filteredResources.every(r => selectedResources.has(r.id)) ? '전체 해제' : '전체 선택'}
               </button>
 
-              {/* 위협 식별 시작 버튼 */}
+              {/* 위협 식별 시작 버튼 - 조회만 */}
               {selectedResources.size > 0 && (
                 <button
                   onClick={handleSendToAnalyzer}
