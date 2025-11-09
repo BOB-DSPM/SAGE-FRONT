@@ -831,7 +831,7 @@ const AegisResults = () => {
               <div>
                 <h3 className="text-xl font-bold text-gray-900">보유기간 만료 데이터</h3>
                 <p className="text-sm text-gray-600 mt-1">
-                  선택한 S3 버킷에서 RDS 익명화 데이터가 남아있는 것을 발견했습니다.
+                  선택한 S3 버킷에서 보존기간이 만료된 데이터가 남아있는 것을 발견했습니다.
                 </p>
                 {retentionViolations.total_matched_files > retentionViolations.matched_files.length && (
                   <p className="text-sm text-orange-600 mt-1">
