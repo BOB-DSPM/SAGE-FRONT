@@ -72,29 +72,61 @@ const AegisResults = () => {
   useEffect(() => {
     if (crossCheckReport) {
       console.log('Cross-check report:', crossCheckReport);
+      console.log('Selected services:', services);
       processRetentionViolations();
     }
-  }, [crossCheckReport]);
+  }, [crossCheckReport, services]);
 
-  // 보유기간 만료 데이터 처리 함수
+  // 보유기간 만료 데이터 처리 함수 - 선택된 버킷만 필터링
   const processRetentionViolations = () => {
     if (!crossCheckReport || !crossCheckReport.s3_scan) {
       setRetentionViolations({
         count: 0,
         matched_ids: [],
-        matched_files: []
+        matched_files: [],
+        rds_ids_checked: [],
+        not_found_ids: []
       });
       return;
     }
 
     const s3Matches = crossCheckReport.s3_scan.matches;
     
+    // 선택된 S3 버킷 목록 추출
+    const selectedBuckets = new Set(
+      selectedItems
+        ?.filter(item => item.type === 's3')
+        .map(item => item.name) || []
+    );
+
+    console.log('선택된 S3 버킷들:', Array.from(selectedBuckets));
+    console.log('전체 매칭된 파일들:', s3Matches.matched_files);
+
+    // 선택된 버킷의 파일만 필터링
+    const filteredMatchedFiles = s3Matches.matched_files?.filter(file => {
+      const isSelected = selectedBuckets.has(file.bucket);
+      console.log(`파일 ${file.file_key} (버킷: ${file.bucket}) - 선택됨: ${isSelected}`);
+      return isSelected;
+    }) || [];
+
+    // 필터링된 파일에서 발견된 ID만 추출
+    const filteredFoundIds = new Set();
+    filteredMatchedFiles.forEach(file => {
+      file.found_ids?.forEach(id => filteredFoundIds.add(id));
+    });
+
+    console.log('필터링된 파일들:', filteredMatchedFiles);
+    console.log('필터링된 ID들:', Array.from(filteredFoundIds));
+
     setRetentionViolations({
-      count: s3Matches.found_ids ? s3Matches.found_ids.length : 0,
-      matched_ids: s3Matches.found_ids || [],
-      matched_files: s3Matches.matched_files || [],
+      count: filteredFoundIds.size,
+      matched_ids: Array.from(filteredFoundIds),
+      matched_files: filteredMatchedFiles,
       rds_ids_checked: s3Matches.rds_ids_checked || [],
-      not_found_ids: s3Matches.not_found_ids || []
+      not_found_ids: s3Matches.not_found_ids || [],
+      // 전체 통계 (참고용)
+      total_matched_ids: s3Matches.found_ids?.length || 0,
+      total_matched_files: s3Matches.matched_files?.length || 0
     });
   };
 
@@ -103,7 +135,7 @@ const AegisResults = () => {
     if (retentionViolations && retentionViolations.count > 0) {
       setShowRetentionModal(true);
     } else {
-      alert('보유기간이 만료된 데이터가 없습니다.');
+      alert('선택한 버킷에서 보유기간이 만료된 데이터가 없습니다.');
     }
   };
 
@@ -426,7 +458,7 @@ const AegisResults = () => {
           {retentionViolations !== null && (
             <div
               className={`bg-white rounded-lg p-6 shadow-sm border cursor-pointer transition-all hover:shadow-md ${
-                retentionViolations.count > 0 ? 'border-purple-300' : ''
+                retentionViolations.count > 0 ? 'border-purple-300 ring-2 ring-purple-200' : ''
               }`}
               onClick={handleRetentionCardClick}
             >
@@ -434,12 +466,16 @@ const AegisResults = () => {
                 <Clock className="w-4 h-4 text-purple-600" />
                 <span>보유기간 만료</span>
               </div>
-              <div className="text-3xl font-bold text-gray-900">
+              <div className={`text-3xl font-bold ${retentionViolations.count > 0 ? 'text-red-900' : 'text-gray-900'}`}>
                 {retentionViolations.count}
               </div>
-              {retentionViolations.count > 0 && (
-                <div className="mt-2 text-xs text-purple-600">
-                  위반 발견
+              {retentionViolations.count > 0 ? (
+                <div className="mt-2 text-xs text-red-600 font-semibold">
+                  ⚠️ 위반 발견
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-green-600">
+                  ✓ 정상
                 </div>
               )}
             </div>
@@ -795,8 +831,13 @@ const AegisResults = () => {
               <div>
                 <h3 className="text-xl font-bold text-gray-900">보유기간 만료 데이터</h3>
                 <p className="text-sm text-gray-600 mt-1">
-                  RDS에서 익명화되었으나 S3에 남아있는 데이터를 발견했습니다.
+                  선택한 S3 버킷에서 RDS 익명화 데이터가 남아있는 것을 발견했습니다.
                 </p>
+                {retentionViolations.total_matched_files > retentionViolations.matched_files.length && (
+                  <p className="text-sm text-orange-600 mt-1">
+                    ※ 전체 {retentionViolations.total_matched_files}개 파일 중 선택한 버킷의 {retentionViolations.matched_files.length}개 파일만 표시
+                  </p>
+                )}
               </div>
               <button 
                 onClick={() => setShowRetentionModal(false)} 
@@ -815,10 +856,15 @@ const AegisResults = () => {
                 </div>
               </div>
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="text-sm text-red-600 mb-1">S3에서 발견된 ID</div>
+                <div className="text-sm text-red-600 mb-1">선택한 버킷에서 발견된 ID</div>
                 <div className="text-2xl font-bold text-red-900">
                   {retentionViolations.matched_ids.length}개
                 </div>
+                {retentionViolations.total_matched_ids > retentionViolations.matched_ids.length && (
+                  <div className="text-xs text-red-600 mt-1">
+                    (전체: {retentionViolations.total_matched_ids}개)
+                  </div>
+                )}
               </div>
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="text-sm text-green-600 mb-1">정상 처리된 ID</div>
@@ -828,11 +874,11 @@ const AegisResults = () => {
               </div>
             </div>
 
-            {/* 발견된 ID 목록 */}
+            {/* 발견된 ID 목록 - 선택한 버킷만 */}
             {retentionViolations.matched_ids.length > 0 && (
               <div className="mb-6">
                 <h4 className="font-semibold text-gray-900 mb-3">
-                  S3에 남아있는 ID 목록 ({retentionViolations.matched_ids.length}개)
+                  선택한 S3 버킷에 남아있는 ID 목록 ({retentionViolations.matched_ids.length}개)
                 </h4>
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <div className="flex flex-wrap gap-2">
@@ -849,8 +895,8 @@ const AegisResults = () => {
               </div>
             )}
 
-            {/* 파일별 상세 정보 */}
-            {retentionViolations.matched_files.length > 0 && (
+            {/* 파일별 상세 정보 - 선택한 버킷만 */}
+            {retentionViolations.matched_files.length > 0 ? (
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">
                   위반 파일 상세 ({retentionViolations.matched_files.length}개 파일)
@@ -916,6 +962,10 @@ const AegisResults = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                선택한 S3 버킷에서는 보유기간 만료 데이터가 발견되지 않았습니다.
               </div>
             )}
 

@@ -263,25 +263,6 @@ const DataTarget = ({ activeTab }) => {
         </div>
       )}
 
-      {/* 안내 메시지 */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <Database className="w-5 h-5 text-blue-600 mt-0.5" />
-          <div>
-            <div className="font-medium text-blue-900 mb-1">통합 검증 프로세스</div>
-            <div className="text-sm text-blue-700">
-              위협 식별 조회 시 다음 작업이 자동으로 실행됩니다:
-              <ul className="list-disc list-inside mt-1 space-y-0.5">
-                <li>선택된 리소스의 위협 식별 결과 조회</li>
-                <li>보유기간 만료 체크 (RDS-S3 교차 검증)</li>
-                {inventoryData.filter(item => item.type === 'rds').length > 0 && (
-                  <li className="font-semibold">RDS 선택 시: RDS 익명화 검증 추가 실행</li>
-                )}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
       
       <DataTargetList 
         inventoryData={inventoryData} 
