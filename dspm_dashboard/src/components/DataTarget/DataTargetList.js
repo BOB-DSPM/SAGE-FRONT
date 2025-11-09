@@ -5,7 +5,7 @@ import ResourceCard from './ResourceCard';
 import DetailPanel from './DetailPanel';
 import { aegisApi } from '../../services/aegisApi';
 
-const ANALYZER_API_BASE = 'http://127.0.0.1:8400';
+const ANALYZER_API_BASE = 'http://43.202.228.52:9000';
 const COLLECTOR_API = 'http://43.202.228.52:8000';
 
 const DataTargetList = ({ inventoryData, loading }) => {

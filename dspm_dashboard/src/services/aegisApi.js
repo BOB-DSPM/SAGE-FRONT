@@ -1,5 +1,5 @@
 // src/services/aegisApi.js
-const AEGIS_API_BASE = 'http://127.0.0.1:8400';
+const AEGIS_API_BASE = 'http://43.202.228.52:9000';
 const COLLECTOR_API_BASE = 'http://43.202.228.52:8000';
 
 export const aegisApi = {
