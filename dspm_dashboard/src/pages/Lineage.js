@@ -152,7 +152,7 @@ const Lineage = () => {
       border = '2px solid #10b981';
     } else if (status === 'Failed') {
       background = '#fee2e2';
-      border = '2px solid '#ef4444';
+      border = '2px solid #ef4444';
     } else if (status === 'Executing') {
       background = '#dbeafe';
       border = '2px solid #3b82f6';
