@@ -31,11 +31,20 @@ const getDefaultDir = () =>
   process.env.REACT_APP_OSS_WORKDIR ||
   "/workspace";
 
-function validateRequired(detail, form) {
+function validateRequired(detail, form, toolCode) {
   const required = (detail?.detail?.options || []).filter((o) => o.required);
   const missing = [];
   for (const opt of required) {
     const v = form[opt.key];
+    // custodian의 경우, policy 대신 policy_text가 채워졌으면 OK 처리
+    if (
+      toolCode === "custodian" &&
+      opt.key === "policy" &&
+      typeof form.policy_text === "string" &&
+      form.policy_text.trim().length > 0
+    ) {
+      continue;
+    }
     if (v === undefined || v === null || String(v).trim() === "") {
       missing.push(opt.label || opt.key);
     }
@@ -318,7 +327,7 @@ export default function OpensourceDetail() {
       setError('Invalid options: "directory" is required');
       return;
     }
-    const missing = validateRequired(detail, form);
+    const missing = validateRequired(detail, form, code);
     if (missing.length > 0) {
       setError(`필수 옵션 누락: ${missing.join(", ")}`);
       return;
@@ -349,7 +358,7 @@ export default function OpensourceDetail() {
       setLiveRunning(false);
       return;
     }
-    const missing = validateRequired(detail, form);
+    const missing = validateRequired(detail, form, code);
     if (missing.length > 0) {
       setStreamErr(`필수 옵션 누락: ${missing.join(", ")}`);
       setLiveRunning(false);
@@ -504,6 +513,24 @@ export default function OpensourceDetail() {
                 * 일부 도구는 <code>directory</code>가 필수입니다.
               </p>
             </Section>
+
+            {/* ✅ Custodian 전용: YAML 정책 입력 */}
+            {code === "custodian" && (
+              <Section title="Custodian Policy (YAML)">
+                <textarea
+                  className="border rounded-lg px-3 py-2 w-full font-mono text-sm"
+                  rows={14}
+                  placeholder={
+                    "예시:\npolicies:\n  - name: s3-no-encryption\n    resource: aws.s3\n    filters:\n      - type: bucket-encryption\n        state: false"
+                  }
+                  value={form.policy_text || ""}
+                  onChange={(e) => onChangeField("policy_text", e.target.value)}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  * 파일 경로(<code>policy</code>) 대신 직접 YAML을 입력하면 자동으로 저장되어 실행됩니다.
+                </p>
+              </Section>
+            )}
 
             {/* Options */}
             {Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0 && (
