@@ -1,6 +1,6 @@
 // ============================================================================
 // file: src/services/ossApi.js
-// (fetch 유틸 모음; React 컴포넌트 금지)
+// (fetch 유틸 모음; download_url 자동 보강 포함)
 // ============================================================================
 const API_BASE =
   process.env.REACT_APP_OSS_BASE || "http://43.202.228.52:8800/oss";
@@ -30,6 +30,28 @@ function ensureDirectory(payload = {}) {
   return payload;
 }
 
+// --- download_url 생성기 (백엔드가 못 넣어줬을 때 폴백) ---
+function buildDownloadUrl(runDir, path) {
+  if (!runDir || !path) return null;
+  const u = new URL(`${API_BASE}/api/oss/files`);
+  // 백엔드가 runs/ 접두사 없는 run_dir도 허용하도록 구현되어 있으므로 그대로 전달
+  u.searchParams.set("run_dir", runDir);
+  u.searchParams.set("path", path);
+  return u.toString();
+}
+
+// 응답 객체에 files[*].download_url 보강
+function withDownloadUrls(resp) {
+  if (!resp || !Array.isArray(resp.files)) return resp;
+  return {
+    ...resp,
+    files: resp.files.map((f) => ({
+      ...f,
+      download_url: f.download_url || buildDownloadUrl(resp.run_dir, f.path),
+    })),
+  };
+}
+
 export async function listCatalog(q) {
   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
   return _fetchJSON(`${API_BASE}/api/oss${qs}`);
@@ -49,10 +71,11 @@ export async function simulateUse(code, payload) {
 
 export async function runTool(code, payload) {
   const withDir = ensureDirectory(payload || {});
-  return _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}/run`, {
+  const resp = await _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}/run`, {
     method: "POST",
     body: JSON.stringify(withDir),
   });
+  return withDownloadUrls(resp); // ⬅ 다운로드 링크 보강
 }
 
 // 최근 실행 결과
@@ -65,7 +88,8 @@ export async function getLatestRun(code) {
     try { text = await res.text(); } catch {}
     throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
   }
-  return res.json();
+  const data = await res.json();
+  return withDownloadUrls(data); // ⬅ 다운로드 링크 보강
 }
 
 // 실시간 실행 스트림

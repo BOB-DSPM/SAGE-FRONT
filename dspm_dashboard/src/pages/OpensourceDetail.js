@@ -1,6 +1,6 @@
 // ============================================================================
 // file: src/pages/OpensourceDetail.js
-// (Run 버튼 + 줄바꿈/ANSI 처리 개선 버전)
+// (Run 버튼 + 줄바꿈/ANSI 처리 + 아티팩트 탐지 수정 + 너비/콘솔 높이 반영)
 // ============================================================================
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
@@ -48,7 +48,6 @@ function stripAnsi(s = "") {
 }
 
 function normalizeNewlines(s = "") {
-  // \r\n, \r → \n 통일
   return s.replace(/\r\n?/g, "\n");
 }
 
@@ -156,6 +155,7 @@ function Copyable({ text }) {
   );
 }
 
+// 기본 높이를 600px로 상향
 function LogConsole({ title, text, height = 600, follow = true, onFollowChange }) {
   const viewRef = useRef(null);
   useEffect(() => {
@@ -389,16 +389,17 @@ export default function OpensourceDetail() {
     } catch {}
   };
 
-  // artifacts
+  // artifacts (이제 outputs/... 을 인식하도록 수정)
   const files = runRes?.files || [];
-  const top = (ext) => files.find((f) => !String(f.path).includes("/") && f.path.endsWith(ext));
+  const top = (ext) => files.find((f) => String(f.path || "").toLowerCase().endsWith(ext));
   const artHtml = top(".html");
   const artCsv = top(".csv");
-  const artJson = top(".ocsf.json");
-  const artLog = files.find((f) => f.path === "log.txt");
+  const artJson = files.find((f) => String(f.path || "").toLowerCase().endsWith(".ocsf.json"));
+  const artLog = files.find((f) => /(^|\/)log\.txt$/i.test(String(f.path || "")));
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* 가로 폭을 더 넓게: max-w-screen-2xl */}
       <div className="max-w-screen-2xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -646,7 +647,7 @@ export default function OpensourceDetail() {
                   )}
                 </Section>
 
-                {/* Quick Artifacts */}
+                {/* Quick Artifacts (outputs/... 경로 대응) */}
                 {(artHtml || artCsv || artJson || artLog) && (
                   <Section title="Quick Artifacts">
                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -763,7 +764,7 @@ export default function OpensourceDetail() {
                         <tbody>
                           {runRes.files.map((f, idx) => (
                             <tr key={idx} className="border-t">
-                              <td className="py-1 pr-4 max-w-[420px]">
+                              <td className="py-1 pr-4 max-w-[520px]">
                                 <code className="break-all">{f.path}</code>
                               </td>
                               <td className="py-1 pr-4">{formatBytes(f.size)}</td>
