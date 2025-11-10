@@ -16,7 +16,7 @@ const AegisResults = () => {
   console.log('AegisResults - crossCheckReport:', crossCheckReport);
 
   const [items, setItems] = useState([]);
-  const [categoryCounts, setCategoryCounts] = useState(null);
+  const [categoryCounts, setCategoryCounts] = useState(null); // 전체 데이터 기준 통계 (고정)
   const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,7 +28,7 @@ const AegisResults = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [countdown, setCountdown] = useState(10);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const [allFilteredItems, setAllFilteredItems] = useState([]);
+  const [allFilteredItems, setAllFilteredItems] = useState([]); // 리소스 필터만 적용된 전체 데이터
   const [selectedResource, setSelectedResource] = useState(null);
   const [expandedEntityModal, setExpandedEntityModal] = useState(null);
   
@@ -230,50 +230,56 @@ const AegisResults = () => {
       const allItems = await fetchAllItems();
       console.log('전체 아이템 수:', allItems.length);
 
-      // 소스명으로 필터링
-      let filtered = allItems;
+      // 소스명으로 필터링 (기본 필터)
+      let baseFiltered = allItems;
       
       if (sourceNames.length > 0) {
-        filtered = allItems.filter(item => {
+        baseFiltered = allItems.filter(item => {
           const itemSource = item.source || '';
           return sourceNames.some(name => itemSource.includes(name));
         });
-        console.log('소스 필터 후:', filtered.length);
+        console.log('소스 필터 후:', baseFiltered.length);
       }
 
       // 리소스 필터 적용
+      let resourceFiltered = baseFiltered;
       if (selectedResource) {
-        filtered = filtered.filter(item => {
+        resourceFiltered = baseFiltered.filter(item => {
           const itemSource = item.source || '';
           return itemSource.includes(selectedResource);
         });
-        console.log('리소스 필터 후:', filtered.length);
+        console.log('리소스 필터 후:', resourceFiltered.length);
       }
 
-      // 카테고리 필터 적용
+      // allFilteredItems는 리소스 필터까지만 적용된 데이터 (카테고리 필터 제외)
+      setAllFilteredItems(resourceFiltered);
+
+      // categoryCounts는 리소스 필터까지만 적용된 데이터로 계산 (한 번만, 고정)
+      if (!categoryCounts || selectedResource !== null) {
+        const counts = calculateCategoryCounts(resourceFiltered);
+        setCategoryCounts(counts);
+        console.log('카테고리 통계 (고정):', counts);
+      }
+
+      // 카테고리 필터 추가 적용 (목록 표시용)
+      let displayFiltered = resourceFiltered;
       if (selectedCategory) {
-        filtered = filtered.filter(item => item.category === selectedCategory);
-        console.log('카테고리 필터 후:', filtered.length);
+        displayFiltered = resourceFiltered.filter(item => item.category === selectedCategory);
+        console.log('카테고리 필터 후:', displayFiltered.length);
       }
 
-      setAllFilteredItems(filtered);
-      setTotalItems(filtered.length);
-
-      // 카테고리 통계 계산
-      const counts = calculateCategoryCounts(filtered);
-      setCategoryCounts(counts);
-      console.log('카테고리 통계:', counts);
+      setTotalItems(displayFiltered.length);
 
       // 현재 페이지 데이터만 추출
       const startIdx = (currentPage - 1) * pageSize;
       const endIdx = startIdx + pageSize;
-      const pageItems = filtered.slice(startIdx, endIdx);
+      const pageItems = displayFiltered.slice(startIdx, endIdx);
 
       setItems(pageItems);
-      setTotalPages(Math.ceil(filtered.length / pageSize));
+      setTotalPages(Math.ceil(displayFiltered.length / pageSize));
 
       // 데이터가 있으면 분석 완료로 처리
-      if (filtered.length > 0 && isAnalyzing) {
+      if (baseFiltered.length > 0 && isAnalyzing) {
         console.log('데이터 발견 - 분석 완료 처리');
         setIsAnalyzing(false);
         setAutoRefresh(false);
@@ -334,6 +340,8 @@ const AegisResults = () => {
     setSelectedResource(resource);
     setSelectedCategory(null);
     setCurrentPage(1);
+    // 리소스 필터가 변경되면 categoryCounts를 null로 설정하여 재계산하도록 함
+    setCategoryCounts(null);
   };
 
   if (!services) {
@@ -742,37 +750,44 @@ const AegisResults = () => {
                 </div>
               )}
 
-              {/* 엔티티 상세 */}
+{/* 엔티티 상세 */}
               {selectedItem.entities && Object.keys(selectedItem.entities).length > 0 && (
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">탐지된 엔티티</h4>
                   <div className="space-y-3">
-                    {Object.entries(selectedItem.entities).map(([type, values]) => (
-                      <div key={type} className="border rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-gray-900">{type}</span>
-                          <span className="text-sm text-gray-600">{values.length}개</span>
+                    {Object.entries(selectedItem.entities).map(([type, values]) => {
+                      // values가 배열인지 확인
+                      const valueArray = Array.isArray(values) ? values : [];
+                      
+                      if (valueArray.length === 0) return null;
+                      
+                      return (
+                        <div key={type} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-gray-900">{type}</span>
+                            <span className="text-sm text-gray-600">{valueArray.length}개</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {valueArray.slice(0, 10).map((value, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-mono"
+                              >
+                                {value}
+                              </span>
+                            ))}
+                            {valueArray.length > 10 && (
+                              <button
+                                onClick={() => setExpandedEntityModal({ type, values: valueArray, count: valueArray.length })}
+                                className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition-colors"
+                              >
+                                +{valueArray.length - 10}개 더 보기
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {values.slice(0, 10).map((value, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-mono"
-                            >
-                              {value}
-                            </span>
-                          ))}
-                          {values.length > 10 && (
-                            <button
-                              onClick={() => setExpandedEntityModal({ type, values, count: values.length })}
-                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition-colors"
-                            >
-                              +{values.length - 10}개 더 보기
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
