@@ -9,14 +9,8 @@ const AegisResults = () => {
   const navigate = useNavigate();
   const { services, timestamp, selectedItems, crossCheckReport } = location.state || {};
 
-  console.log('AegisResults - location.state:', location.state);
-  console.log('AegisResults - services:', services);
-  console.log('AegisResults - selectedItems:', selectedItems);
-  console.log('AegisResults - timestamp:', timestamp);
-  console.log('AegisResults - crossCheckReport:', crossCheckReport);
-
   const [items, setItems] = useState([]);
-  const [categoryCounts, setCategoryCounts] = useState(null); // 전체 데이터 기준 통계 (고정)
+  const [categoryCounts, setCategoryCounts] = useState(null);
   const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,25 +22,19 @@ const AegisResults = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [countdown, setCountdown] = useState(10);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const [allFilteredItems, setAllFilteredItems] = useState([]); // 리소스 필터만 적용된 전체 데이터
+  const [allFilteredItems, setAllFilteredItems] = useState([]);
   const [selectedResource, setSelectedResource] = useState(null);
   const [expandedEntityModal, setExpandedEntityModal] = useState(null);
-  
-  // 보유기간 만료 관련 state 추가
   const [retentionViolations, setRetentionViolations] = useState(null);
   const [showRetentionModal, setShowRetentionModal] = useState(false);
 
   const pageSize = 20;
 
-  // 선택된 리소스 이름들 가져오기
   const getSourceNames = () => {
     if (!services || services.length === 0) return [];
-    console.log('services:', services);
-    console.log('selectedItems:', selectedItems);
     return services;
   };
 
-  // 필터링된 아이템들로부터 카테고리 통계 계산
   const calculateCategoryCounts = (filteredItems) => {
     const categories = {
       none: 0,
@@ -68,16 +56,6 @@ const AegisResults = () => {
     };
   };
 
-  // 보유기간 만료 데이터 처리
-  useEffect(() => {
-    if (crossCheckReport) {
-      console.log('Cross-check report:', crossCheckReport);
-      console.log('Selected services:', services);
-      processRetentionViolations();
-    }
-  }, [crossCheckReport, services]);
-
-  // 보유기간 만료 데이터 처리 함수 - 선택된 버킷만 필터링
   const processRetentionViolations = () => {
     if (!crossCheckReport || !crossCheckReport.s3_scan) {
       setRetentionViolations({
@@ -92,31 +70,20 @@ const AegisResults = () => {
 
     const s3Matches = crossCheckReport.s3_scan.matches;
     
-    // 선택된 S3 버킷 목록 추출
     const selectedBuckets = new Set(
       selectedItems
         ?.filter(item => item.type === 's3')
         .map(item => item.name) || []
     );
 
-    console.log('선택된 S3 버킷들:', Array.from(selectedBuckets));
-    console.log('전체 매칭된 파일들:', s3Matches.matched_files);
-
-    // 선택된 버킷의 파일만 필터링
     const filteredMatchedFiles = s3Matches.matched_files?.filter(file => {
-      const isSelected = selectedBuckets.has(file.bucket);
-      console.log(`파일 ${file.file_key} (버킷: ${file.bucket}) - 선택됨: ${isSelected}`);
-      return isSelected;
+      return selectedBuckets.has(file.bucket);
     }) || [];
 
-    // 필터링된 파일에서 발견된 ID만 추출
     const filteredFoundIds = new Set();
     filteredMatchedFiles.forEach(file => {
       file.found_ids?.forEach(id => filteredFoundIds.add(id));
     });
-
-    console.log('필터링된 파일들:', filteredMatchedFiles);
-    console.log('필터링된 ID들:', Array.from(filteredFoundIds));
 
     setRetentionViolations({
       count: filteredFoundIds.size,
@@ -124,13 +91,11 @@ const AegisResults = () => {
       matched_files: filteredMatchedFiles,
       rds_ids_checked: s3Matches.rds_ids_checked || [],
       not_found_ids: s3Matches.not_found_ids || [],
-      // 전체 통계 (참고용)
       total_matched_ids: s3Matches.found_ids?.length || 0,
       total_matched_files: s3Matches.matched_files?.length || 0
     });
   };
 
-  // 보유기간 만료 카드 클릭 핸들러
   const handleRetentionCardClick = () => {
     if (retentionViolations && retentionViolations.count > 0) {
       setShowRetentionModal(true);
@@ -139,30 +104,36 @@ const AegisResults = () => {
     }
   };
 
-  // 초기 로드
   useEffect(() => {
-    console.log('AegisResults - useEffect 실행');
-    loadData();
-    if (!stats) {
-      loadStats();
+    if (crossCheckReport) {
+      processRetentionViolations();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, selectedCategory, selectedResource]);
 
-  // 자동 새로고침 (10초마다)
+  useEffect(() => {
+    loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!autoRefresh || !isAnalyzing) return;
 
     const interval = setInterval(() => {
-      console.log('자동 새로고침 실행');
       loadData();
       loadStats();
       setCountdown(10);
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, isAnalyzing, currentPage, selectedCategory, selectedResource]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh, isAnalyzing]);
 
-  // 카운트다운
   useEffect(() => {
     if (!autoRefresh || !isAnalyzing) return;
 
@@ -177,15 +148,12 @@ const AegisResults = () => {
   }, [autoRefresh, isAnalyzing]);
 
   const loadData = async () => {
-    console.log('loadData 시작');
     setIsLoading(true);
     setError(null);
 
     try {
       const sourceNames = getSourceNames();
-      console.log('Source names:', sourceNames);
 
-      // 전체 데이터를 가져오기 위한 함수
       const fetchAllItems = async () => {
         let allItems = [];
         let currentFetchPage = 1;
@@ -193,20 +161,14 @@ const AegisResults = () => {
         let hasMore = true;
 
         while (hasMore) {
-          console.log(`페이지 ${currentFetchPage} 로딩 중...`);
-          
           const response = await aegisApi.getFrontList({
             page: currentFetchPage,
             size: fetchPageSize,
           });
 
-          console.log(`페이지 ${currentFetchPage} 응답:`, response);
-
           if (response.items && response.items.length > 0) {
             allItems = [...allItems, ...response.items];
-            console.log(`누적 아이템 수: ${allItems.length}`);
 
-            // 더 이상 데이터가 없으면 중단
             if (response.items.length < fetchPageSize) {
               hasMore = false;
             } else {
@@ -216,9 +178,7 @@ const AegisResults = () => {
             hasMore = false;
           }
 
-          // 안전장치: 최대 50페이지까지만
           if (currentFetchPage > 50) {
-            console.log('최대 페이지 수 도달');
             hasMore = false;
           }
         }
@@ -226,11 +186,8 @@ const AegisResults = () => {
         return allItems;
       };
 
-      // 전체 데이터 가져오기
       const allItems = await fetchAllItems();
-      console.log('전체 아이템 수:', allItems.length);
 
-      // 소스명으로 필터링 (기본 필터)
       let baseFiltered = allItems;
       
       if (sourceNames.length > 0) {
@@ -238,39 +195,30 @@ const AegisResults = () => {
           const itemSource = item.source || '';
           return sourceNames.some(name => itemSource.includes(name));
         });
-        console.log('소스 필터 후:', baseFiltered.length);
       }
 
-      // 리소스 필터 적용
       let resourceFiltered = baseFiltered;
       if (selectedResource) {
         resourceFiltered = baseFiltered.filter(item => {
           const itemSource = item.source || '';
           return itemSource.includes(selectedResource);
         });
-        console.log('리소스 필터 후:', resourceFiltered.length);
       }
 
-      // allFilteredItems는 리소스 필터까지만 적용된 데이터 (카테고리 필터 제외)
       setAllFilteredItems(resourceFiltered);
 
-      // categoryCounts는 리소스 필터까지만 적용된 데이터로 계산 (한 번만, 고정)
       if (!categoryCounts || selectedResource !== null) {
         const counts = calculateCategoryCounts(resourceFiltered);
         setCategoryCounts(counts);
-        console.log('카테고리 통계 (고정):', counts);
       }
 
-      // 카테고리 필터 추가 적용 (목록 표시용)
       let displayFiltered = resourceFiltered;
       if (selectedCategory) {
         displayFiltered = resourceFiltered.filter(item => item.category === selectedCategory);
-        console.log('카테고리 필터 후:', displayFiltered.length);
       }
 
       setTotalItems(displayFiltered.length);
 
-      // 현재 페이지 데이터만 추출
       const startIdx = (currentPage - 1) * pageSize;
       const endIdx = startIdx + pageSize;
       const pageItems = displayFiltered.slice(startIdx, endIdx);
@@ -278,9 +226,7 @@ const AegisResults = () => {
       setItems(pageItems);
       setTotalPages(Math.ceil(displayFiltered.length / pageSize));
 
-      // 데이터가 있으면 분석 완료로 처리
       if (baseFiltered.length > 0 && isAnalyzing) {
-        console.log('데이터 발견 - 분석 완료 처리');
         setIsAnalyzing(false);
         setAutoRefresh(false);
       }
@@ -340,12 +286,10 @@ const AegisResults = () => {
     setSelectedResource(resource);
     setSelectedCategory(null);
     setCurrentPage(1);
-    // 리소스 필터가 변경되면 categoryCounts를 null로 설정하여 재계산하도록 함
     setCategoryCounts(null);
   };
 
   if (!services) {
-    console.log('services가 없음 - 잘못된 접근');
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
@@ -363,7 +307,6 @@ const AegisResults = () => {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
       <div className="bg-white rounded-lg p-6 shadow-sm border">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -401,7 +344,6 @@ const AegisResults = () => {
           </div>
         </div>
 
-        {/* 리소스 필터 버튼들 */}
         {services && services.length > 1 && (
           <div className="border-t pt-4">
             <div className="flex flex-wrap gap-2">
@@ -433,7 +375,6 @@ const AegisResults = () => {
         )}
       </div>
 
-      {/* 통계 카드 */}
       {categoryCounts && !isAnalyzing && (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div
@@ -462,7 +403,6 @@ const AegisResults = () => {
             </div>
           ))}
 
-          {/* 보유기간 만료 카드 */}
           {retentionViolations !== null && (
             <div
               className={`bg-white rounded-lg p-6 shadow-sm border cursor-pointer transition-all hover:shadow-md ${
@@ -491,7 +431,6 @@ const AegisResults = () => {
         </div>
       )}
 
-      {/* 분석 중 상태 */}
       {isAnalyzing && (
         <div className="bg-blue-50 border border-blue-300 rounded-lg p-6">
           <div className="flex items-center gap-3">
@@ -506,14 +445,12 @@ const AegisResults = () => {
         </div>
       )}
 
-      {/* 에러 메시지 */}
       {error && (
         <div className="bg-red-50 border border-red-300 rounded-lg p-4">
           <p className="text-red-800">{error}</p>
         </div>
       )}
 
-      {/* 결과 목록 */}
       {!isAnalyzing && (
         <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-6 border-b">
@@ -561,7 +498,6 @@ const AegisResults = () => {
                           <p className="text-sm text-gray-700">{item.reason}</p>
                         )}
 
-                        {/* AI Hits 표시 */}
                         {item.ai_hits && item.ai_hits.length > 0 && (
                           <div className="mt-3">
                             <div className="flex flex-wrap gap-2">
@@ -618,7 +554,6 @@ const AegisResults = () => {
                 ))}
               </div>
 
-              {/* 페이지네이션 */}
               {totalPages > 1 && (
                 <div className="p-6 border-t flex items-center justify-between">
                   <div className="text-sm text-gray-600">
@@ -651,7 +586,6 @@ const AegisResults = () => {
         </div>
       )}
 
-      {/* 상세 정보 모달 */}
       {selectedItem && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
@@ -677,7 +611,6 @@ const AegisResults = () => {
             </div>
 
             <div className="space-y-6">
-              {/* 기본 정보 */}
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">기본 정보</h4>
                 <dl className="grid grid-cols-2 gap-4">
@@ -718,7 +651,6 @@ const AegisResults = () => {
                 </dl>
               </div>
 
-              {/* 이유 */}
               {selectedItem.reason && (
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">분류 이유</h4>
@@ -728,7 +660,6 @@ const AegisResults = () => {
                 </div>
               )}
 
-              {/* AI Hits 상세 */}
               {selectedItem.ai_hits && selectedItem.ai_hits.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">AI 탐지 결과 ({selectedItem.ai_hits.length}건)</h4>
@@ -750,14 +681,14 @@ const AegisResults = () => {
                 </div>
               )}
 
-{/* 엔티티 상세 */}
               {selectedItem.entities && Object.keys(selectedItem.entities).length > 0 && (
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">탐지된 엔티티</h4>
                   <div className="space-y-3">
-                    {Object.entries(selectedItem.entities).map(([type, values]) => {
-                      // values가 배열인지 확인
-                      const valueArray = Array.isArray(values) ? values : [];
+                    {Object.entries(selectedItem.entities).map(([type, entityData]) => {
+                      const valueArray = entityData?.values && Array.isArray(entityData.values) 
+                        ? entityData.values 
+                        : (Array.isArray(entityData) ? entityData : []);
                       
                       if (valueArray.length === 0) return null;
                       
@@ -796,7 +727,6 @@ const AegisResults = () => {
         </div>
       )}
 
-      {/* 엔티티 전체 보기 모달 */}
       {expandedEntityModal && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" 
@@ -832,7 +762,6 @@ const AegisResults = () => {
         </div>
       )}
 
-      {/* 보유기간 만료 모달 */}
       {showRetentionModal && retentionViolations && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" 
@@ -862,7 +791,6 @@ const AegisResults = () => {
               </button>
             </div>
 
-            {/* 요약 정보 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="text-sm text-blue-600 mb-1">검사한 RDS ID</div>
@@ -889,7 +817,6 @@ const AegisResults = () => {
               </div>
             </div>
 
-            {/* 발견된 ID 목록 - 선택한 버킷만 */}
             {retentionViolations.matched_ids.length > 0 && (
               <div className="mb-6">
                 <h4 className="font-semibold text-gray-900 mb-3">
@@ -910,7 +837,6 @@ const AegisResults = () => {
               </div>
             )}
 
-            {/* 파일별 상세 정보 - 선택한 버킷만 */}
             {retentionViolations.matched_files.length > 0 ? (
               <div>
                 <h4 className="font-semibold text-gray-900 mb-3">
@@ -984,7 +910,6 @@ const AegisResults = () => {
               </div>
             )}
 
-            {/* 정상 처리된 ID */}
             {retentionViolations.not_found_ids.length > 0 && (
               <div className="mt-6">
                 <h4 className="font-semibold text-gray-900 mb-3">
