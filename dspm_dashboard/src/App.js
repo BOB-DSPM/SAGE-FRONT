@@ -39,7 +39,7 @@ const tabs = [
     ]
   },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
-  { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
+  // { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 
   // { id: 'opensource', name: 'Opensource', icon: Boxes },
 ];
