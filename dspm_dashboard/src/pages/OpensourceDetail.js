@@ -156,7 +156,7 @@ function Copyable({ text }) {
   );
 }
 
-function LogConsole({ title, text, height = 360, follow = true, onFollowChange }) {
+function LogConsole({ title, text, height = 450, follow = true, onFollowChange }) {
   const viewRef = useRef(null);
   useEffect(() => {
     if (follow && viewRef.current) {
@@ -399,7 +399,7 @@ export default function OpensourceDetail() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="max-w-screen-2xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
