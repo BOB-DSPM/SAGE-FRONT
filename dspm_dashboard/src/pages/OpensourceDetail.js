@@ -21,13 +21,12 @@ import {
   Copy,
   Info,
 } from "lucide-react";
-import { getDetail, runTool } from "../services/ossApi";
+import { getDetail, runTool, getLatestRun, streamRun } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
 
 // ──────────────────────────────────────────────────────────────
 // Utilities
 // ──────────────────────────────────────────────────────────────
-const API_BASE = process.env.REACT_APP_OSS_BASE || "/oss";
 const getDefaultDir = () =>
   localStorage.getItem("oss.directory") ||
   process.env.REACT_APP_OSS_WORKDIR ||
@@ -287,24 +286,14 @@ export default function OpensourceDetail() {
     if (!detail) return;
     (async () => {
       try {
-        const url = `${API_BASE}/api/oss/${encodeURIComponent(code)}/runs/latest`;
-        const res = await fetch(url, { method: "GET" });
-        if (res.status === 404) {
-          // 최근 실행 없음 -> 조용히 무시
-          return;
-        }
-        if (!res.ok) {
-          // 다른 에러는 표시
-          const txt = await res.text().catch(() => "");
-          throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
-        }
-        const latest = await res.json();
+        const latest = await getLatestRun(code);
+        if (!latest) return; // 404
         setRunRes(latest);
         setFromLatest(true);
         setLatestTime(maxMtime(latest.files));
       } catch (e) {
-        // 최근 실행 조회 실패는 치명적이지 않으니 토스트/메시지 없이 지나감
-      };
+        // 필요 시: setError(String(e));
+      }
     })();
   }, [detail, code]);
 
@@ -371,35 +360,19 @@ export default function OpensourceDetail() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/oss/${encodeURIComponent(code)}/run/stream`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok || !res.body) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
       let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        const chunk = value ? decoder.decode(value, { stream: true }) : "";
-        if (chunk) {
-          setLiveLog((prev) => prev + chunk);
-          buf += chunk;
-          const lastBrace = buf.lastIndexOf("\n{");
-          if (lastBrace !== -1) {
-            const tail = buf.slice(lastBrace + 1).trim();
-            try {
-              const parsed = JSON.parse(tail);
-              if (parsed && parsed.summary) setSummary(parsed.summary);
-            } catch {}
-          }
+      await streamRun(code, form, (chunk) => {
+        setLiveLog((prev) => prev + chunk);
+        buf += chunk;
+        const lastBrace = buf.lastIndexOf("\n{");
+        if (lastBrace !== -1) {
+          const tail = buf.slice(lastBrace + 1).trim();
+          try {
+            const parsed = JSON.parse(tail);
+            if (parsed && parsed.summary) setSummary(parsed.summary);
+          } catch {}
         }
-        if (done) break;
-      }
+      });
     } catch (e) {
       setStreamErr(String(e));
       setLiveLog((prev) => prev + `\n[ERROR] ${String(e)}\n`);
