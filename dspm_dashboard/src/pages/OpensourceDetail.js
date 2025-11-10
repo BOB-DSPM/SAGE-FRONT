@@ -1,6 +1,6 @@
 // ============================================================================
 // file: src/pages/OpensourceDetail.js
-// (Run 버튼 + 줄바꿈/ANSI 처리 + 아티팩트 탐지 수정 + 너비/콘솔 높이 반영)
+// (Run 버튼 + 줄바꿈/ANSI 처리 + 아티팩트 탐지 수정 + 폭/콘솔 높이 반영 + 다운로드 a[download])
 // ============================================================================
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
@@ -125,13 +125,15 @@ function Collapsible({ title, children, defaultOpen = false, right }) {
   );
 }
 
-function ButtonLink({ href, children }) {
+function ButtonLink({ href, children, downloadName }) {
+  // downloadName 주어지면 다운로드 버튼에 download 속성 부여
   return (
     <a
       href={href}
-      target="_blank"
-      rel="noreferrer"
+      target={downloadName ? undefined : "_blank"}
+      rel={downloadName ? undefined : "noreferrer"}
       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50"
+      {...(downloadName ? { download: downloadName } : {})}
     >
       {children}
     </a>
@@ -148,7 +150,10 @@ function Copyable({ text }) {
     } catch {}
   };
   return (
-    <button onClick={onCopy} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-gray-50">
+    <button
+      onClick={onCopy}
+      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-gray-50"
+    >
       {copied ? <ClipboardCheck className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
       {copied ? "Copied" : "Copy"}
     </button>
@@ -389,7 +394,7 @@ export default function OpensourceDetail() {
     } catch {}
   };
 
-  // artifacts (이제 outputs/... 을 인식하도록 수정)
+  // artifacts (outputs/... 경로 대응)
   const files = runRes?.files || [];
   const top = (ext) => files.find((f) => String(f.path || "").toLowerCase().endsWith(ext));
   const artHtml = top(".html");
@@ -404,7 +409,10 @@ export default function OpensourceDetail() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Link to="/overview" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100">
+            <Link
+              to="/overview"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100"
+            >
               <ArrowLeft className="w-4 h-4" />
               Dashboard
             </Link>
@@ -433,11 +441,18 @@ export default function OpensourceDetail() {
                 {Array.isArray(detail.tags) && detail.tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {detail.tags.map((t) => (
-                      <span key={t} className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">#{t}</span>
+                      <span
+                        key={t}
+                        className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600"
+                      >
+                        #{t}
+                      </span>
                     ))}
                   </div>
                 )}
-                {detail.license && <div className="text-xs text-gray-500 mt-2">License: {detail.license}</div>}
+                {detail.license && (
+                  <div className="text-xs text-gray-500 mt-2">License: {detail.license}</div>
+                )}
               </div>
             </div>
 
@@ -452,7 +467,8 @@ export default function OpensourceDetail() {
               <div className="flex items-center gap-3 p-3 rounded-xl border bg-blue-50 text-blue-800">
                 <Info className="w-4 h-4" />
                 <div className="text-sm">
-                  최근 실행 결과를 불러왔습니다{latestTime ? ` (기준: ${formatDate(latestTime)})` : ""}.
+                  최근 실행 결과를 불러왔습니다
+                  {latestTime ? ` (기준: ${formatDate(latestTime)})` : ""}.
                 </div>
                 <div className="ml-auto">
                   <button
@@ -484,7 +500,9 @@ export default function OpensourceDetail() {
                 value={form.directory || ""}
                 onChange={(e) => onChangeField("directory", e.target.value)}
               />
-              <p className="text-xs text-gray-500 mt-1">* 일부 도구는 <code>directory</code>가 필수입니다.</p>
+              <p className="text-xs text-gray-500 mt-1">
+                * 일부 도구는 <code>directory</code>가 필수입니다.
+              </p>
             </Section>
 
             {/* Options */}
@@ -507,15 +525,25 @@ export default function OpensourceDetail() {
                             value={form[key] ?? opt.default ?? ""}
                             onChange={(e) => onChangeField(key, e.target.value)}
                           >
-                            <option value="" disabled>선택…</option>
-                            {opt.values?.map((v) => (<option key={v} value={v}>{v}</option>))}
+                            <option value="" disabled>
+                              선택…
+                            </option>
+                            {opt.values?.map((v) => (
+                              <option key={v} value={v}>
+                                {v}
+                              </option>
+                            ))}
                           </select>
-                          {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
+                          {opt.help && (
+                            <p className="text-xs text-gray-500 mt-1">{opt.help}</p>
+                          )}
                         </div>
                       );
                     }
                     if (opt.type === "array[string]") {
-                      const val = Array.isArray(form[key]) ? form[key].join(",") : form[key] || "";
+                      const val = Array.isArray(form[key])
+                        ? form[key].join(",")
+                        : form[key] || "";
                       return (
                         <div key={key} className="flex flex-col">
                           <label className="text-sm text-gray-700">{opt.label}</label>
@@ -526,11 +554,16 @@ export default function OpensourceDetail() {
                             onChange={(e) =>
                               onChangeField(
                                 key,
-                                e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
+                                e.target.value
+                                  .split(",")
+                                  .map((s) => s.trim())
+                                  .filter(Boolean)
                               )
                             }
                           />
-                          {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
+                          {opt.help && (
+                            <p className="text-xs text-gray-500 mt-1">{opt.help}</p>
+                          )}
                         </div>
                       );
                     }
@@ -543,7 +576,9 @@ export default function OpensourceDetail() {
                           value={form[key] ?? ""}
                           onChange={(e) => onChangeField(key, e.target.value)}
                         />
-                        {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
+                        {opt.help && (
+                          <p className="text-xs text-gray-500 mt-1">{opt.help}</p>
+                        )}
                       </div>
                     );
                   })}
@@ -585,14 +620,23 @@ export default function OpensourceDetail() {
                   onClick={copyCmd}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border hover:bg-gray-50 shadow-sm"
                 >
-                  {copied ? <ClipboardCheck className="w-4 h-4" /> : <Clipboard className="w-4 h-4" />}
+                  {copied ? (
+                    <ClipboardCheck className="w-4 h-4" />
+                  ) : (
+                    <Clipboard className="w-4 h-4" />
+                  )}
                   {copied ? "Copied!" : "Copy command"}
                 </button>
               )}
             </div>
 
-            {/* Live Console */}
-            <LogConsole title="Live Log (실시간)" text={liveLog} follow={followTail} onFollowChange={setFollowTail} />
+            {/* Live Console (height=600) */}
+            <LogConsole
+              title="Live Log (실시간)"
+              text={liveLog}
+              follow={followTail}
+              onFollowChange={setFollowTail}
+            />
             {streamErr && <div className="text-xs text-red-600">{streamErr}</div>}
 
             {/* Run Results */}
@@ -602,9 +646,11 @@ export default function OpensourceDetail() {
                   title={
                     <div className="flex items-center gap-2">
                       <span>Run Summary</span>
-                      {runRes.rc === 0 || runRes.rc === null
-                        ? <Badge tone="green">ok</Badge>
-                        : <Badge tone="amber">exit {runRes.rc}</Badge>}
+                      {runRes.rc === 0 || runRes.rc === null ? (
+                        <Badge tone="green">ok</Badge>
+                      ) : (
+                        <Badge tone="amber">exit {runRes.rc}</Badge>
+                      )}
                       {fromLatest && <Badge tone="blue">latest</Badge>}
                     </div>
                   }
@@ -616,21 +662,28 @@ export default function OpensourceDetail() {
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3 border">
                       <div className="text-gray-600">Duration</div>
-                      <div className="font-medium">{runRes.duration_ms ?? "-"} ms</div>
+                      <div className="font-medium">
+                        {runRes.duration_ms ?? "-"} ms
+                      </div>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3 border overflow-hidden">
                       <div className="text-gray-600">Run dir</div>
-                      <div className="font-mono text-xs truncate">{runRes.run_dir}</div>
+                      <div className="font-mono text-xs truncate">
+                        {runRes.run_dir}
+                      </div>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3 border overflow-hidden">
                       <div className="text-gray-600">Output dir</div>
-                      <div className="font-mono text-xs truncate">{runRes.output_dir}</div>
+                      <div className="font-mono text-xs truncate">
+                        {runRes.output_dir}
+                      </div>
                     </div>
                   </div>
 
                   {latestTime && (
                     <div className="mt-3 text-xs text-gray-600">
-                      기준시각: <span className="font-mono">{formatDate(latestTime)}</span>
+                      기준시각:{" "}
+                      <span className="font-mono">{formatDate(latestTime)}</span>
                     </div>
                   )}
 
@@ -656,7 +709,9 @@ export default function OpensourceDetail() {
                           <div className="flex items-center gap-2 text-sm font-medium">
                             <FileText className="w-4 h-4" /> HTML Report
                           </div>
-                          <div className="text-xs text-gray-600 mt-1 break-all">{artHtml.path}</div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">
+                            {artHtml.path}
+                          </div>
                           <div className="flex gap-2 mt-2">
                             {artHtml.download_url && (
                               <ButtonLink href={artHtml.download_url}>
@@ -664,7 +719,10 @@ export default function OpensourceDetail() {
                               </ButtonLink>
                             )}
                             {artHtml.download_url && (
-                              <ButtonLink href={artHtml.download_url}>
+                              <ButtonLink
+                                href={artHtml.download_url}
+                                downloadName={artHtml.path.split("/").pop()}
+                              >
                                 <Download className="w-4 h-4" /> Download
                               </ButtonLink>
                             )}
@@ -676,7 +734,9 @@ export default function OpensourceDetail() {
                           <div className="flex items-center gap-2 text-sm font-medium">
                             <FileSpreadsheet className="w-4 h-4" /> CSV
                           </div>
-                          <div className="text-xs text-gray-600 mt-1 break-all">{artCsv.path}</div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">
+                            {artCsv.path}
+                          </div>
                           <div className="flex gap-2 mt-2">
                             {artCsv.download_url && (
                               <ButtonLink href={artCsv.download_url}>
@@ -684,7 +744,10 @@ export default function OpensourceDetail() {
                               </ButtonLink>
                             )}
                             {artCsv.download_url && (
-                              <ButtonLink href={artCsv.download_url}>
+                              <ButtonLink
+                                href={artCsv.download_url}
+                                downloadName={artCsv.path.split("/").pop()}
+                              >
                                 <Download className="w-4 h-4" /> Download
                               </ButtonLink>
                             )}
@@ -696,7 +759,9 @@ export default function OpensourceDetail() {
                           <div className="flex items-center gap-2 text-sm font-medium">
                             <FileJson className="w-4 h-4" /> JSON-OCSF
                           </div>
-                          <div className="text-xs text-gray-600 mt-1 break-all">{artJson.path}</div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">
+                            {artJson.path}
+                          </div>
                           <div className="flex gap-2 mt-2">
                             {artJson.download_url && (
                               <ButtonLink href={artJson.download_url}>
@@ -704,7 +769,10 @@ export default function OpensourceDetail() {
                               </ButtonLink>
                             )}
                             {artJson.download_url && (
-                              <ButtonLink href={artJson.download_url}>
+                              <ButtonLink
+                                href={artJson.download_url}
+                                downloadName={artJson.path.split("/").pop()}
+                              >
                                 <Download className="w-4 h-4" /> Download
                               </ButtonLink>
                             )}
@@ -716,7 +784,9 @@ export default function OpensourceDetail() {
                           <div className="flex items-center gap-2 text-sm font-medium">
                             <Terminal className="w-4 h-4" /> log.txt
                           </div>
-                          <div className="text-xs text-gray-600 mt-1 break-all">{artLog.path}</div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">
+                            {artLog.path}
+                          </div>
                           <div className="flex gap-2 mt-2">
                             {artLog.download_url && (
                               <ButtonLink href={artLog.download_url}>
@@ -724,7 +794,10 @@ export default function OpensourceDetail() {
                               </ButtonLink>
                             )}
                             {artLog.download_url && (
-                              <ButtonLink href={artLog.download_url}>
+                              <ButtonLink
+                                href={artLog.download_url}
+                                downloadName={artLog.path.split("/").pop()}
+                              >
                                 <Download className="w-4 h-4" /> Download
                               </ButtonLink>
                             )}
@@ -736,13 +809,27 @@ export default function OpensourceDetail() {
                 )}
 
                 {/* STDOUT / STDERR */}
-                <Collapsible title="STDOUT" right={runRes.stdout ? <Copyable text={stripAnsi(runRes.stdout)} /> : null}>
+                <Collapsible
+                  title="STDOUT"
+                  right={
+                    runRes.stdout ? (
+                      <Copyable text={stripAnsi(runRes.stdout)} />
+                    ) : null
+                  }
+                >
                   <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words">
                     {normalizeNewlines(stripAnsi(runRes.stdout || ""))}
                   </pre>
                 </Collapsible>
 
-                <Collapsible title="STDERR" right={runRes.stderr ? <Copyable text={stripAnsi(runRes.stderr)} /> : null}>
+                <Collapsible
+                  title="STDERR"
+                  right={
+                    runRes.stderr ? (
+                      <Copyable text={stripAnsi(runRes.stderr)} />
+                    ) : null
+                  }
+                >
                   <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words text-red-600">
                     {normalizeNewlines(stripAnsi(runRes.stderr || ""))}
                   </pre>
@@ -779,7 +866,10 @@ export default function OpensourceDetail() {
                                     <span className="text-gray-400">-</span>
                                   )}
                                   {f.download_url ? (
-                                    <ButtonLink href={f.download_url}>
+                                    <ButtonLink
+                                      href={f.download_url}
+                                      downloadName={f.path.split("/").pop()}
+                                    >
                                       <Download className="w-4 h-4" /> Download
                                     </ButtonLink>
                                   ) : null}
@@ -800,14 +890,21 @@ export default function OpensourceDetail() {
                 {runRes.preinstall && (
                   <Collapsible title="Pre-run installation details">
                     <div className="text-xs text-gray-700 mb-2">
-                      <div>checked_before.exists: {String(runRes.preinstall.checked_before?.exists)}</div>
+                      <div>
+                        checked_before.exists:{" "}
+                        {String(runRes.preinstall.checked_before?.exists)}
+                      </div>
                       <div>installed: {String(runRes.preinstall.installed)}</div>
-                      <div>check_after.exists: {String(runRes.preinstall.check_after?.exists)}</div>
+                      <div>
+                        check_after.exists:{" "}
+                        {String(runRes.preinstall.check_after?.exists)}
+                      </div>
                     </div>
                     {runRes.preinstall.pip_log && (
                       <>
                         <div className="text-xs text-gray-500">
-                          pip cmd: <code>{runRes.preinstall.pip_log.cmd}</code>
+                          pip cmd:{" "}
+                          <code>{runRes.preinstall.pip_log.cmd}</code>
                         </div>
                         <pre className="text-xs mt-2 p-2 bg-white border rounded-xl overflow-x-auto">
                           {runRes.preinstall.pip_log.stdout}
@@ -854,7 +951,9 @@ export default function OpensourceDetail() {
                       <tbody>
                         {summary.files.map((f, i) => (
                           <tr key={i} className="border-t">
-                            <td className="py-1 pr-4"><code>{f.path}</code></td>
+                            <td className="py-1 pr-4">
+                              <code>{f.path}</code>
+                            </td>
                             <td className="py-1 pr-4">{formatBytes(f.size)}</td>
                             <td className="py-1">{formatDate(f.mtime)}</td>
                           </tr>
@@ -866,17 +965,18 @@ export default function OpensourceDetail() {
               </Section>
             )}
 
-            {Array.isArray(detail?.detail?.cli_examples) && detail.detail.cli_examples.length > 0 && (
-              <Section title="CLI Examples">
-                <ul className="list-disc list-inside text-sm text-gray-800 space-y-1">
-                  {detail.detail.cli_examples.map((ex, i) => (
-                    <li key={i}>
-                      <code className="px-1 py-0.5 rounded bg-gray-100">{ex}</code>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
+            {Array.isArray(detail?.detail?.cli_examples) &&
+              detail.detail.cli_examples.length > 0 && (
+                <Section title="CLI Examples">
+                  <ul className="list-disc list-inside text-sm text-gray-800 space-y-1">
+                    {detail.detail.cli_examples.map((ex, i) => (
+                      <li key={i}>
+                        <code className="px-1 py-0.5 rounded bg-gray-100">{ex}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 // ============================================================================
 // file: src/services/ossApi.js
-// (fetch 유틸 모음; download_url 자동 보강 포함)
+// (fetch 유틸 모음; download_url 자동 보강 포함 + 사소한 안정화)
 // ============================================================================
 const API_BASE =
   process.env.REACT_APP_OSS_BASE || "http://43.202.228.52:8800/oss";
@@ -17,7 +17,9 @@ async function _fetchJSON(url, options = {}) {
   });
   if (!res.ok) {
     let text = "";
-    try { text = await res.text(); } catch {}
+    try {
+      text = await res.text();
+    } catch {}
     throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
   }
   return res.json();
@@ -34,7 +36,7 @@ function ensureDirectory(payload = {}) {
 function buildDownloadUrl(runDir, path) {
   if (!runDir || !path) return null;
   const u = new URL(`${API_BASE}/api/oss/files`);
-  // 백엔드가 runs/ 접두사 없는 run_dir도 허용하도록 구현되어 있으므로 그대로 전달
+  // 백엔드가 'runs/' 접두사가 없는 run_dir도 허용하므로 그대로 전달
   u.searchParams.set("run_dir", runDir);
   u.searchParams.set("path", path);
   return u.toString();
@@ -71,10 +73,13 @@ export async function simulateUse(code, payload) {
 
 export async function runTool(code, payload) {
   const withDir = ensureDirectory(payload || {});
-  const resp = await _fetchJSON(`${API_BASE}/api/oss/${encodeURIComponent(code)}/run`, {
-    method: "POST",
-    body: JSON.stringify(withDir),
-  });
+  const resp = await _fetchJSON(
+    `${API_BASE}/api/oss/${encodeURIComponent(code)}/run`,
+    {
+      method: "POST",
+      body: JSON.stringify(withDir),
+    }
+  );
   return withDownloadUrls(resp); // ⬅ 다운로드 링크 보강
 }
 
@@ -85,7 +90,9 @@ export async function getLatestRun(code) {
   if (res.status === 404) return null;
   if (!res.ok) {
     let text = "";
-    try { text = await res.text(); } catch {}
+    try {
+      text = await res.text();
+    } catch {}
     throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
   }
   const data = await res.json();
@@ -116,3 +123,5 @@ export async function streamRun(code, payload, onChunk) {
     if (chunk && onChunk) onChunk(chunk);
   }
 }
+
+export { buildDownloadUrl, withDownloadUrls };
