@@ -1,5 +1,5 @@
 // src/pages/Lineage.js
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import ReactFlow, {
   Controls,
   Background,
@@ -9,7 +9,19 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
-import { X, Database, Clock, CheckCircle, XCircle, Loader, RefreshCw, ChevronDown, GitBranch, Layers, Filter, CheckSquare, Square } from 'lucide-react';
+import {
+  X,
+  Database,
+  CheckCircle,
+  XCircle,
+  Loader,
+  ChevronDown,
+  GitBranch,
+  Layers,
+  Eye,
+  EyeOff,
+  ShieldAlert,
+} from 'lucide-react';
 import { useLineage } from '../hooks/useLineage';
 
 const Lineage = () => {
@@ -27,69 +39,48 @@ const Lineage = () => {
     schemaLineageData,
     loadSchemas,
     loadSchemaLineage,
-    buildSchemaGraph,
-} = useLineage ();
+  } = useLineage();
 
-const domainsSafe = Array.isArray(domains) ? domains : [];
+  const domainsSafe = Array.isArray(domains) ? domains : [];
 
-const [nodes, setNodes, onNodesChange] = useNodesState([]);
-const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-const [selectedNode, setSelectedNode] = useState(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [selectedNode, setSelectedNode] = useState(null);
 
-const [selectedDomain, setSelectedDomain] = useState({
-  id: "__all__",
-  name: "전체 도메인",
-  region: "ap-northeast-2",
-});
-const [showDomainDropdown, setShowDomainDropdown] = useState(false);
+  const [selectedDomain, setSelectedDomain] = useState({
+    id: '__all__',
+    name: '전체 도메인',
+    region: 'ap-northeast-2',
+  });
+  const [showDomainDropdown, setShowDomainDropdown] = useState(false);
 
-const [selectedPipeline, setSelectedPipeline] = useState(null);
-const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedPipeline, setSelectedPipeline] = useState(null);
+  const [showDropdown, setShowDropdown] = useState(false);
 
-const [viewMode, setViewMode] = useState('pipeline');
-const [showPipelineList, setShowPipelineList] = useState(true);
+  const [viewMode, setViewMode] = useState('pipeline');
+  const [selectedSchema, setSelectedSchema] = useState(null);
+  const [showSchemaDropdown, setShowSchemaDropdown] = useState(false);
 
-const [selectedSchema, setSelectedSchema] = useState(null);
-const [showSchemaDropdown, setShowSchemaDropdown] = useState(false);
+  // 노드 상세 패널/데이터
+  const [showPanel, setShowPanel] = useState(false);
+  const [selectedNodeData, setSelectedNodeData] = useState(null);
 
-// 노드 상세 패널 상태
-const [showPanel, setShowPanel] = useState(false);
-const [selectedNodeData, setSelectedNodeData] = useState(null);
+  // PII 값 표시 토글
+  const [revealPII, setRevealPII] = useState(false);
 
-  const getDomainPipelineCount = (domainId) => {
-    if (domainId === '__untagged__') {
-      return pipelines.filter(p => {
-        const hasDomainTag = p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
-        return !hasDomainTag;
-      }).length;
-    }
-    
-    return pipelines.filter(p => {
-      if (p.matchedDomain) return p.matchedDomain.domainId === domainId;
-      if (p.tags && p.tags['sagemaker:domain-arn']) {
-        return p.tags['sagemaker:domain-arn'].includes(domainId);
-      }
-      return false;
-    }).length;
+  // 🔴 PII 수동 오버라이드(노드별)
+  // key: node.id 또는 dataArtifact의 경우 data:<s3-uri>
+  // value: { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore }
+  const [piiOverrides, setPiiOverrides] = useState({});
+
+  // 선택 노드에 대한 오버라이드 키 생성
+  const getOverrideKey = (nodeLike) => {
+    const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
+    if (n.type === 'dataArtifact' && n.uri) return `data:${String(n.uri)}`;
+    return String(n.id || n.stepId || n.label || '');
   };
 
-  const filteredPipelines = selectedDomain 
-    ? selectedDomain.id === '__all__'
-      ? pipelines
-      : selectedDomain.id === '__untagged__'
-        ? pipelines.filter(p => {
-            const hasDomainTag = p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
-            return !hasDomainTag;
-          })
-        : pipelines.filter(p => {
-            if (p.matchedDomain) return p.matchedDomain.domainId === selectedDomain.id;
-            if (p.tags && p.tags['sagemaker:domain-arn']) {
-              return p.tags['sagemaker:domain-arn'].includes(selectedDomain.id);
-            }
-            return false;
-          })
-    : pipelines;
-
+  // 공통 유틸
   const safeValue = (v) => {
     if (v == null) return 'N/A';
     if (typeof v === 'object') {
@@ -113,6 +104,43 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     return `${s}s`;
   };
 
+  const getStatusIcon = (status) => {
+    const s = safeValue(status);
+    if (s === 'Succeeded') return <CheckCircle className="w-4 h-4 text-green-600" />;
+    if (s === 'Failed') return <XCircle className="w-4 h-4 text-red-600" />;
+    if (s === 'Executing') return <Loader className="w-4 h-4 text-blue-600 animate-spin" />;
+    return null;
+  };
+
+  // PII 메타 추출: 오버라이드 > meta.pii > pii
+  const extractPIIMeta = (nodeLike) => {
+    const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
+    const overrideKey = getOverrideKey({ nodeData: n });
+    const ov = piiOverrides[overrideKey] || null;
+
+    const base = n?.meta?.pii || n?.pii || {};
+    // 오버라이드가 있으면 base 위에 덮어쓰기
+    const merged = ov ? { ...base, ...ov } : base;
+
+    const hasPII = Boolean(merged?.hasPII);
+    const types = Array.isArray(merged?.types) ? merged.types : [];
+    const fields = Array.isArray(merged?.fields) ? merged.fields : [];
+    const sampleValues = Array.isArray(merged?.sampleValues) ? merged.sampleValues : [];
+    const lastScanAt = merged?.lastScanAt || null;
+    const scanner = merged?.scanner || null;
+    const riskScore =
+      typeof merged?.riskScore === 'number'
+        ? merged.riskScore
+        : typeof merged?.risk === 'number'
+        ? merged.risk
+        : null;
+
+    return { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore };
+  };
+
+  const hasPIIFlag = (nodeLike) => extractPIIMeta(nodeLike).hasPII;
+
+  // 스타일
   const getNodeStyle = (type, status, isSelected, isConnected, isDimmed) => {
     let background = '#f3f4f6';
     let border = '2px solid #9ca3af';
@@ -141,8 +169,7 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     if (isSelected) {
       border = '4px solid #dc2626';
       boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.3)';
-    }
-    else if (isConnected) {
+    } else if (isConnected) {
       border = '3px solid #ef4444';
     }
 
@@ -166,33 +193,35 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     };
   };
 
-  const getStatusIcon = (status) => {
-    const s = safeValue(status);
-    if (s === 'Succeeded') return <CheckCircle className="w-4 h-4 text-green-600" />;
-    if (s === 'Failed') return <XCircle className="w-4 h-4 text-red-600" />;
-    if (s === 'Executing') return <Loader className="w-4 h-4 text-blue-600 animate-spin" />;
-    return null;
-  };
-
-  const getDataNodeStyle = (nodeType, isSelected, isConnected, isDimmed) => {
+  const getDataNodeStyle = (
+    nodeType,
+    isSelected,
+    isConnected,
+    isDimmed,
+    hasPII = false
+  ) => {
     let border = '2px solid #0284c7';
     let opacity = 1;
     let background = '#e0f2fe';
     let boxShadow = 'none';
 
     if (nodeType === 'dataArtifact') {
-      background = '#e0f2fe';
-      border = '2px solid #0284c7';
+      if (hasPII) {
+        background = '#fee2e2'; // red-100
+        border = '2px solid #ef4444'; // red-500
+      } else {
+        background = '#e0f2fe'; // sky-100
+        border = '2px solid #0284c7'; // sky-600
+      }
     } else {
-      background = '#f0fdf4';
-      border = '2px solid #16a34a';
+      background = '#f0fdf4'; // green-50
+      border = '2px solid #16a34a'; // green-600
     }
 
     if (isSelected) {
       border = '4px solid #dc2626';
       boxShadow = '0 0 0 4px rgba(220, 38, 38, 0.3)';
-    }
-    else if (isConnected) {
+    } else if (isConnected) {
       border = '3px solid #ef4444';
     }
 
@@ -220,6 +249,7 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     return ['Extract', 'Validate', 'Preprocess', 'Train', 'Evaluate', 'ModelQualityCheck'];
   };
 
+  // 연결 탐색
   const getAllConnectedNodes = useCallback((nodeId, edges) => {
     const connected = new Set([nodeId]);
     const toVisit = [nodeId];
@@ -230,7 +260,7 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
       if (visited.has(current)) continue;
       visited.add(current);
 
-      edges.forEach(edge => {
+      edges.forEach((edge) => {
         if (edge.source === current && !connected.has(edge.target)) {
           connected.add(edge.target);
           toVisit.push(edge.target);
@@ -241,24 +271,21 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
         }
       });
     }
-
     return connected;
   }, []);
 
   const getConnectedEdges = useCallback((connectedNodeIds, edges) => {
     const connectedEdgeIds = new Set();
-    
-    edges.forEach(edge => {
+    edges.forEach((edge) => {
       if (connectedNodeIds.has(edge.source) && connectedNodeIds.has(edge.target)) {
         connectedEdgeIds.add(edge.id);
       }
     });
-
     return connectedEdgeIds;
   }, []);
 
+  // 클릭 핸들러
   const handlePaneClick = () => {
-    // 데이터셋 선택 / viewMode는 그대로 유지
     setSelectedNode(null);
     setSelectedNodeData(null);
     setShowPanel(false);
@@ -271,52 +298,66 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     setShowPanel(true);
   }, []);
 
-  const onNodeClick = useCallback((event, node) => {
-    setSelectedNode(node.id);
-    setShowPanel(true);
-    setSelectedNodeData(node.data.nodeData || null);
+  const onNodeClick = useCallback(
+    (event, node) => {
+      setSelectedNode(node.id);
+      setShowPanel(true);
+      setSelectedNodeData(node.data.nodeData || null);
 
-    const connectedNodeIds = getAllConnectedNodes(node.id, edges);
-    const connectedEdgeIds = getConnectedEdges(connectedNodeIds, edges);
+      const connectedNodeIds = getAllConnectedNodes(node.id, edges);
+      const connectedEdgeIds = getConnectedEdges(connectedNodeIds, edges);
 
-    setNodes((nds) =>
-      nds.map((n) => {
-        const isSelected = n.id === node.id;
-        const isConnected = connectedNodeIds.has(n.id) && !isSelected;
-        const isDimmed = !connectedNodeIds.has(n.id);
+      setNodes((nds) =>
+        nds.map((n) => {
+          const isSelected = n.id === node.id;
+          const isConnected = connectedNodeIds.has(n.id) && !isSelected;
+          const isDimmed = !connectedNodeIds.has(n.id);
+          const nodeType = n.data.nodeData?.type;
 
-        return {
-          ...n,
-          style: n.data.nodeData?.type === 'dataArtifact' || n.data.nodeData?.type === 'processNode'
-            ? getDataNodeStyle(n.data.nodeData?.type, isSelected, isConnected, isDimmed)
-            : getNodeStyle(
-                n.data.nodeData?.type || n.data.nodeData?.stepType,
-                n.data.nodeData?.run?.status,
-                isSelected,
-                isConnected,
-                isDimmed
-              ),
-        };
-      })
-    );
+          return {
+            ...n,
+            style:
+              nodeType === 'dataArtifact' || nodeType === 'processNode'
+                ? getDataNodeStyle(
+                    nodeType,
+                    isSelected,
+                    isConnected,
+                    isDimmed,
+                    hasPIIFlag(n)
+                  )
+                : getNodeStyle(
+                    n.data.nodeData?.type || n.data.nodeData?.stepType,
+                    n.data.nodeData?.run?.status,
+                    isSelected,
+                    isConnected,
+                    isDimmed
+                  ),
+          };
+        })
+      );
 
-    setEdges((eds) =>
-      eds.map((e) => {
-        const isConnected = connectedEdgeIds.has(e.id);
-        return {
-          ...e,
-          animated: false,
-          style: {
-            ...e.style,
-            stroke: isConnected ? '#ef4444' : (e.style?.originalStroke || e.style?.stroke || '#9ca3af'),
-            strokeDasharray: isConnected ? '5,5' : 'none',
-            opacity: isConnected ? 1 : 0.1,
-            strokeWidth: isConnected ? 3 : 2,
-          },
-        };
-      })
-    );
-  }, [edges, setNodes, setEdges, getAllConnectedNodes, getConnectedEdges]);
+      setEdges((eds) =>
+        eds.map((e) => {
+          const isConnected = connectedEdgeIds.has(e.id);
+          // 데이터 엣지는 originalStroke에 sky/red 저장해 둠
+          return {
+            ...e,
+            animated: false,
+            style: {
+              ...e.style,
+              stroke: isConnected
+                ? '#ef4444'
+                : e.style?.originalStroke || e.style?.stroke || '#9ca3af',
+              strokeDasharray: isConnected ? '5,5' : 'none',
+              opacity: isConnected ? 1 : 0.1,
+              strokeWidth: isConnected ? 3 : 2,
+            },
+          };
+        })
+      );
+    },
+    [edges, setNodes, setEdges, getAllConnectedNodes, getConnectedEdges]
+  );
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
@@ -324,18 +365,22 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     setSelectedNodeData(null);
 
     setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        style: n.data.nodeData?.type === 'dataArtifact' || n.data.nodeData?.type === 'processNode'
-          ? getDataNodeStyle(n.data.nodeData?.type, false, false, false)
-          : getNodeStyle(
-              n.data.nodeData?.type || n.data.nodeData?.stepType,
-              n.data.nodeData?.run?.status,
-              false,
-              false,
-              false
-            ),
-      }))
+      nds.map((n) => {
+        const nodeType = n.data.nodeData?.type;
+        return {
+          ...n,
+          style:
+            nodeType === 'dataArtifact' || nodeType === 'processNode'
+              ? getDataNodeStyle(nodeType, false, false, false, hasPIIFlag(n))
+              : getNodeStyle(
+                  n.data.nodeData?.type || n.data.nodeData?.stepType,
+                  n.data.nodeData?.run?.status,
+                  false,
+                  false,
+                  false
+                ),
+        };
+      })
     );
 
     setEdges((eds) =>
@@ -353,13 +398,9 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     );
   }, [setNodes, setEdges]);
 
+  // 그래프 빌더
   const buildPipelineGraph = useCallback((lineageData) => {
-    console.log('Building pipeline graph from:', lineageData);
-    
-    if (!lineageData?.graphPipeline?.nodes) {
-      console.warn('No graphPipeline.nodes in lineageData');
-      return { nodes: [], edges: [] };
-    }
+    if (!lineageData?.graphPipeline?.nodes) return { nodes: [], edges: [] };
 
     const graphData = lineageData.graphPipeline;
     const stepOrder = getPipelineStepOrder();
@@ -374,8 +415,6 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
       return orderA - orderB;
     });
 
-    const nodeWidth = 180;
-    const nodeHeight = 80;
     const nodeSpacing = 250;
     const startX = 50;
     const fixedY = 250;
@@ -391,21 +430,21 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
         data: {
           label: (
             <div style={{ textAlign: 'center', width: '100%' }}>
-              <div style={{ 
-                fontWeight: 'bold', 
-                fontSize: '13px',
-                marginBottom: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px'
-              }}>
+              <div
+                style={{
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  marginBottom: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
                 {getStatusIcon(status)}
                 <span>{node.label || nodeId}</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                {nodeType}
-              </div>
+              <div style={{ fontSize: '11px', color: '#6b7280' }}>{nodeType}</div>
               {node.run?.elapsedSec != null && node.run.elapsedSec > 0 && (
                 <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
                   {formatDuration(node.run.elapsedSec)}
@@ -413,14 +452,14 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
               )}
             </div>
           ),
-          nodeData: node
+          nodeData: node,
         },
         style: getNodeStyle(nodeType, status, false, false, false),
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
-        position: { 
-          x: startX + (index * nodeSpacing), 
-          y: fixedY 
+        position: {
+          x: startX + index * nodeSpacing,
+          y: fixedY,
         },
         draggable: false,
       });
@@ -429,37 +468,27 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     for (let i = 1; i < sortedNodes.length; i++) {
       const prevNode = sortedNodes[i - 1];
       const currNode = sortedNodes[i];
-      
+
       newEdges.push({
         id: `edge-${prevNode.id}-${currNode.id}`,
         source: prevNode.id,
         target: currNode.id,
         type: 'smoothstep',
         animated: false,
-        style: { 
-          stroke: '#9ca3af', 
-          strokeWidth: 2,
-          originalStroke: '#9ca3af'
-        },
+        style: { stroke: '#9ca3af', strokeWidth: 2, originalStroke: '#9ca3af' },
       });
     }
 
-    console.log('Pipeline graph built (linear):', { nodes: newNodes.length, edges: newEdges.length });
     return { nodes: newNodes, edges: newEdges };
   }, []);
 
   const buildDataGraph = useCallback((lineageData) => {
-    console.log('Building data graph from:', lineageData);
-    
-    if (!lineageData?.graphData?.nodes) {
-      console.warn('No graphData.nodes in lineageData');
-      return { nodes: [], edges: [] };
-    }
+    if (!lineageData?.graphData?.nodes) return { nodes: [], edges: [] };
 
     const graphData = lineageData.graphData;
     const pipelineNodes = lineageData.graphPipeline?.nodes || [];
     const stepOrder = getPipelineStepOrder();
-    
+
     const newNodes = [];
     const newEdges = [];
     const dataNodeMap = new Map();
@@ -483,22 +512,24 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
 
     sortedProcessNodes.forEach((processNode) => {
       const status = processNode.run?.status || 'Unknown';
-      
+
       newNodes.push({
         id: processNode.id,
         type: 'default',
         data: {
           label: (
             <div style={{ textAlign: 'center', width: '100%' }}>
-              <div style={{ 
-                fontWeight: 'bold', 
-                fontSize: '12px',
-                marginBottom: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '4px'
-              }}>
+              <div
+                style={{
+                  fontWeight: 'bold',
+                  fontSize: '12px',
+                  marginBottom: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                }}
+              >
                 {getStatusIcon(status)}
                 <span>{processNode.label || 'Process'}</span>
               </div>
@@ -512,58 +543,85 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
               )}
             </div>
           ),
-          nodeData: processNode
+          nodeData: processNode,
         },
         style: getDataNodeStyle('processNode', false, false, false),
-        position: { x: 0, y: 0 },        
+        position: { x: 0, y: 0 },
         draggable: false,
       });
 
-      const pipelineNode = pipelineNodes.find(pn => pn.id === processNode.stepId);
+      const pipelineNode = pipelineNodes.find((pn) => pn.id === processNode.stepId);
       if (pipelineNode?.inputs) {
         pipelineNode.inputs.forEach((input) => {
           const uri = safeValue(input.uri);
-          if (uri && uri !== 'N/A' && !uri.includes('Get') && !uri.includes('Std:Join') && uri.startsWith('s3://')) {
+          if (
+            uri &&
+            uri !== 'N/A' &&
+            !uri.includes('Get') &&
+            !uri.includes('Std:Join') &&
+            uri.startsWith('s3://')
+          ) {
             const dataNodeId = `data:${uri}`;
-            if (dataNodeMap.has(dataNodeId) && !newNodes.find(n => n.id === dataNodeId)) {
+            if (dataNodeMap.has(dataNodeId) && !newNodes.find((n) => n.id === dataNodeId)) {
               const dataNode = dataNodeMap.get(dataNodeId);
-              
+              const pii = hasPIIFlag({ data: { nodeData: dataNode } });
+
               newNodes.push({
                 id: dataNodeId,
                 type: 'default',
                 data: {
                   label: (
                     <div style={{ textAlign: 'center', width: '100%' }}>
-                      <div style={{ 
-                        fontWeight: 'bold', 
-                        fontSize: '11px',
-                        marginBottom: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px'
-                      }}>
+                      <div
+                        style={{
+                          fontWeight: 'bold',
+                          fontSize: '11px',
+                          marginBottom: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                        }}
+                      >
                         <Database className="w-3 h-3 text-blue-600" />
                         <span>{input.name || 'Data'}</span>
+                        {pii && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: '2px 6px',
+                              borderRadius: 9999,
+                              background: '#fee2e2',
+                              color: '#b91c1c',
+                              border: '1px solid #fecaca',
+                              fontWeight: 700,
+                            }}
+                            title="PII detected"
+                          >
+                            PII
+                          </span>
+                        )}
                       </div>
-                      <div style={{ 
-                        fontSize: '9px', 
-                        color: '#6b7280', 
-                        wordBreak: 'break-all',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        maxWidth: '160px',
-                        margin: '0 auto'
-                      }}>
+                      <div
+                        style={{
+                          fontSize: '9px',
+                          color: '#6b7280',
+                          wordBreak: 'break-all',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '160px',
+                          margin: '0 auto',
+                        }}
+                      >
                         {uri.split('/').slice(-1)[0]}
                       </div>
                     </div>
                   ),
-                  nodeData: dataNode
+                  nodeData: dataNode,
                 },
-                style: getDataNodeStyle('dataArtifact', false, false, false),
-                position: { x: 0, y: 0 },        
+                style: getDataNodeStyle('dataArtifact', false, false, false, pii),
+                position: { x: 0, y: 0 },
                 draggable: false,
               });
 
@@ -573,10 +631,10 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                 target: processNode.id,
                 type: 'smoothstep',
                 animated: false,
-                style: { 
-                  stroke: '#0284c7', 
+                style: {
+                  stroke: pii ? '#ef4444' : '#0284c7',
                   strokeWidth: 2,
-                  originalStroke: '#0284c7'
+                  originalStroke: pii ? '#ef4444' : '#0284c7',
                 },
               });
             }
@@ -593,48 +651,32 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
           target: processNode.id,
           type: 'smoothstep',
           animated: false,
-          style: { 
-            stroke: '#16a34a', 
-            strokeWidth: 2,
-            originalStroke: '#16a34a'
-          },
+          style: { stroke: '#16a34a', strokeWidth: 2, originalStroke: '#16a34a' },
         });
       }
     });
 
+    // 레이아웃
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({
-      rankdir: 'LR',
-      nodesep: 100,
-      ranksep: 150,
-      ranker: 'network-simplex',
-    });
+    dagreGraph.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 150, ranker: 'network-simplex' });
 
-    const nodeWidth = 180;
-    const nodeHeight = 80;
+    const nodeW = 180;
+    const nodeH = 80;
 
-    newNodes.forEach((n) => {
-      dagreGraph.setNode(n.id, { width: nodeWidth, height: nodeHeight });
-    });
-
-    newEdges.forEach((e) => {
-      if (e.source && e.target) {
-        dagreGraph.setEdge(e.source, e.target);
-      }
-    });
+    newNodes.forEach((n) => dagreGraph.setNode(n.id, { width: nodeW, height: nodeH }));
+    newEdges.forEach((e) => dagreGraph.setEdge(e.source, e.target));
 
     try {
       dagre.layout(dagreGraph);
-      
       const layoutedNodes = newNodes.map((n) => {
-        const nodeWithPosition = dagreGraph.node(n.id);
-        if (!nodeWithPosition) {
-          return { 
-            ...n, 
-            sourcePosition: Position.Right, 
+        const pos = dagreGraph.node(n.id);
+        if (!pos) {
+          return {
+            ...n,
+            sourcePosition: Position.Right,
             targetPosition: Position.Left,
-            position: { x: 0, y: 0 }
+            position: { x: 0, y: 0 },
           };
         }
         return {
@@ -642,24 +684,19 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
           position: {
-            x: nodeWithPosition.x - nodeWidth / 2,
-            y: nodeWithPosition.y - nodeHeight / 2,
+            x: pos.x - nodeW / 2,
+            y: pos.y - nodeH / 2,
           },
         };
       });
-
-      console.log('Data graph built:', { nodes: layoutedNodes.length, edges: newEdges.length });
       return { nodes: layoutedNodes, edges: newEdges };
-    } catch (error) {
-      console.error('Dagre layout error:', error);
+    } catch (e) {
+      console.error('Dagre layout error:', e);
       return { nodes: newNodes, edges: newEdges };
     }
-  }, []);
+  }, [piiOverrides]); // 오버라이드 변화 시 스타일 갱신
 
-  // 비활성 노드/엣지 투명도 (너무 어둡지 않게)
-  const DIMMED_OPACITY = 0.7;
-  
-  // 선택한 데이터셋(테이블)에 해당하는 데이터 흐름만 하이라이트하는 그래프
+  // 데이터셋 하이라이트 (기존 로직 유지)
   const buildDatasetGraph = useCallback(
     (schemaLineageData, lineageData) => {
       if (
@@ -670,22 +707,13 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
       ) {
         return { nodes: [], edges: [] };
       }
-
-      // 1) 데이터 관점 그래프를 기반으로 (레이아웃 재사용)
       const { nodes: baseNodes, edges: baseEdges } = buildDataGraph(lineageData);
       if (!baseNodes.length) return { nodes: [], edges: [] };
 
-      // 2) 선택된 테이블 (드롭다운에서 고른 데이터셋)
       const table = schemaLineageData.tables[0];
       const tableName = (table.name || '').toLowerCase();
-
-      // evaluation 전용 등 약간의 동의어 매핑
       const synonyms = [tableName].filter(Boolean);
-
-      // "evaluation" 스키마가 실제로 evaluate.py / Evaluate 로 표시되는 케이스 대응
-      if (tableName === 'evaluation') {
-        synonyms.push('evaluate', 'eval');
-      }
+      if (tableName === 'evaluation') synonyms.push('evaluate', 'eval');
 
       const linkUris = [
         ...(table.links || []),
@@ -695,30 +723,18 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
       ]
         .map(String)
         .filter(Boolean);
-
       const explicitLinks = new Set(linkUris);
 
-      // URI 매칭 (train / validation / evaluation 모두 커버)
       const isUriMatch = (uriRaw) => {
         if (!uriRaw) return false;
         const uri = String(uriRaw);
         const lower = uri.toLowerCase();
-
-        // 1) schema에서 내려온 링크 기준
-        if (explicitLinks.size) {
-          for (const link of explicitLinks) {
-            if (!link) continue;
-            if (uri === link) return true;
-            if (uri.startsWith(link)) return true;
-          }
+        for (const link of explicitLinks) {
+          if (!link) continue;
+          if (uri === link || uri.startsWith(link)) return true;
         }
-
-        if (!synonyms.length) return false;
-
-        // 테이블 이름 + 동의어들 기준으로 uri 매칭
         for (const name of synonyms) {
           if (!name) continue;
-
           if (lower.includes(`/${name}/`)) return true;
           if (lower.endsWith(`/${name}`)) return true;
           if (lower.endsWith(`/${name}.csv`)) return true;
@@ -726,170 +742,104 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
           if (lower.includes(`/${name}_`)) return true;
           if (lower.includes(`_${name}.`)) return true;
         }
-
-        // evaluation 계열 추가 heuristics (폴더/파일명이 eval* 인 경우)
         if (tableName === 'evaluation') {
           if (lower.includes('/eval/')) return true;
           if (lower.endsWith('/eval')) return true;
           if (lower.includes('_eval')) return true;
           if (lower.includes('evaluate')) return true;
         }
-
-        // 기본적으로 매치되지 않으면 false 반환
         return false;
       };
 
-      // dataArtifact 노드만 대상으로 seed 찾기 (nodeData 기준)
-
-      // dataArtifact 노드만 대상으로 seed 찾기 (nodeData 기준)
       const dataNodes = baseNodes.filter((n) => {
         const t = n.data?.nodeData?.type || n.data?.type || n.type;
         return t === 'dataArtifact';
       });
 
       const seedIds = new Set(
-         dataNodes
-           .filter((n) => {
-             const uri =
-              n.data?.nodeData?.uri ||
-              n.data?.uri ||
-              n.uri;
+        dataNodes
+          .filter((n) => {
+            const uri = n.data?.nodeData?.uri || n.data?.uri || n.uri;
             return isUriMatch(uri);
           })
           .map((n) => n.id)
       );
 
-      // seed를 못 찾으면 그냥 기본 그래프 리턴 (이게 UX상 안전)
       if (seedIds.size === 0) {
-        // 1차: evaluation 같은 케이스용 - 프로세스 노드 이름으로 매칭 시도
-        const fallbackSeeds = baseNodes
-          .filter((n) => {
-            const label =
-              (n.data?.label ||
-                n.data?.nodeData?.label ||
-                n.data?.nodeData?.name ||
-                n.id ||
-                '') + '';
-            return label.toLowerCase().includes(tableName); // e.g. "Evaluate" ⊇ "evaluation"
-          })
-          .map((n) => n.id);
-
-        fallbackSeeds.forEach((id) => seedIds.add(id));
-
-        // 그래도 없으면: 이 데이터셋과 직접 연결된 노드 정보가 없다는 뜻이니
-        // 전체를 색깔 그대로 보여주는 대신 "전부 연하게" 처리해서
-        // 사용자에게 '매칭 없음' 상태라는 걸 시각적으로 보여줌.
-        if (seedIds.size === 0) {
-          console.warn('No matching nodes for table (no artifact & no label match):', tableName);
-
-          const DIMMED_OPACITY = 0.25;
-
-          const nodes = baseNodes.map((n) => ({
+        const DIM = 0.25;
+        return {
+          nodes: baseNodes.map((n) => ({
             ...n,
-            style: {
-              ...(n.style || {}),
-              opacity: DIMMED_OPACITY,
-            },
-            data: {
-              ...(n.data || {}),
-              isDimmed: true,
-            },
-          }));
-
-          const edges = baseEdges.map((e) => ({
+            style: { ...(n.style || {}), opacity: DIM },
+            data: { ...(n.data || {}), isDimmed: true },
+          })),
+          edges: baseEdges.map((e) => ({
             ...e,
-            style: {
-              ...(e.style || {}),
-              opacity: DIMMED_OPACITY,
-            },
-          }));
-
-          return { nodes, edges };
-        }
+            style: { ...(e.style || {}), opacity: DIM },
+          })),
+        };
       }
 
-      // 3) 선택된 데이터셋과 "직접 연결된" 노드만 활성화
-      //    - seed dataArtifact
-      //    - seed 와 edge 로 바로 연결된 process node
       const activeNodeIds = new Set(seedIds);
       const activeEdgeIds = new Set();
-
       baseEdges.forEach((e) => {
-        const { source, target, id } = e;
-        const sourceIsSeed = seedIds.has(source);
-        const targetIsSeed = seedIds.has(target);
-
-      // seed <-> 인접 노드(주로 processNode)만 활성화
-      if (sourceIsSeed && !targetIsSeed) {
-        activeNodeIds.add(target);
-        activeEdgeIds.add(id);
-      } else if (targetIsSeed && !sourceIsSeed) {
-        activeNodeIds.add(source);
-        activeEdgeIds.add(id);
-      }
-    });
-
-      // 4) 스타일 적용 (비해당 노드는 연하지만 보이도록)
-      const DIMMED_OPACITY = 0.3; // 기존보다 살짝 진하게
-
-      const nodes = baseNodes.map((n) => {
-        const active = activeNodeIds.has(n.id);
-        return {
-          ...n,
-          style: {
-            ...(n.style || {}),
-            opacity: active ? 1 : DIMMED_OPACITY,
-          },
-          data: {
-            ...(n.data || {}),
-            isDimmed: !active,
-          },
-        };
+        const sourceIsSeed = seedIds.has(e.source);
+        const targetIsSeed = seedIds.has(e.target);
+        if (sourceIsSeed && !targetIsSeed) {
+          activeNodeIds.add(e.target);
+          activeEdgeIds.add(e.id);
+        } else if (targetIsSeed && !sourceIsSeed) {
+          activeNodeIds.add(e.source);
+          activeEdgeIds.add(e.id);
+        }
       });
 
-      const edges = baseEdges.map((e) => {
-        const active = activeEdgeIds.has(e.id);
-        return {
-          ...e,
-          style: {
-            ...(e.style || {}),
-            opacity: active ? 1 : DIMMED_OPACITY,
-          },
-          animated: active && e.animated,
-        };
-      });
-
-      return { nodes, edges };
+      const DIM = 0.3;
+      return {
+        nodes: baseNodes.map((n) => {
+          const active = activeNodeIds.has(n.id);
+          return {
+            ...n,
+            style: { ...(n.style || {}), opacity: active ? 1 : DIM },
+            data: { ...(n.data || {}), isDimmed: !active },
+          };
+        }),
+        edges: baseEdges.map((e) => {
+          const active = activeEdgeIds.has(e.id);
+          return {
+            ...e,
+            style: { ...(e.style || {}), opacity: active ? 1 : DIM },
+            animated: active && e.animated,
+          };
+        }),
+      };
     },
     [buildDataGraph]
   );
-  
 
-  // 라인리지 / 스키마 변경 → 그래프 생성
+  // 데이터 로딩 & 그래프 갱신
+  useEffect(() => {
+    loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
+  }, [loadPipelines]);
+
   useEffect(() => {
     if (!lineageData) return;
 
-    // 1) 데이터셋(스키마) 관점
     if (viewMode === 'schema' && schemaLineageData) {
-      const { nodes, edges } = buildDatasetGraph(
-        schemaLineageData,
-        lineageData
-      );
+      const { nodes, edges } = buildDatasetGraph(schemaLineageData, lineageData);
       setNodes(nodes);
       setEdges(edges);
       setSelectedNode(null);
       setSelectedNodeData(null);
       setShowPanel(false);
-      return; // 중요: 아래 기본 그래프 로직으로 내려가지 않게
+      return;
     }
 
-    // 2) 파이프라인 / 데이터 전체 관점
     if (viewMode === 'pipeline') {
       const { nodes, edges } = buildPipelineGraph(lineageData);
       setNodes(nodes);
       setEdges(edges);
     } else if (viewMode === 'data') {
-      // 'data' 기본
       const { nodes, edges } = buildDataGraph(lineageData);
       setNodes(nodes);
       setEdges(edges);
@@ -906,35 +856,29 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     buildPipelineGraph,
     buildDataGraph,
     buildDatasetGraph,
+    piiOverrides, // 오버라이드 반영
   ]);
 
+  // 핸들러
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
     setSelectedNode(null);
     setShowPanel(false);
     setSelectedNodeData(null);
-    if (mode !== 'schema') {
-      setSelectedSchema(null); // 스키마 모드 벗어나면 해제
-    }
+    if (mode !== 'schema') setSelectedSchema(null);
   };
 
-  // 파이프라인 선택/로드
   const handlePipelineSelect = useCallback(
     async (pipeline) => {
       setSelectedPipeline(pipeline);
-      setShowPipelineList(false);
       setShowDropdown(false);
       setViewMode('pipeline');
       setSelectedSchema(null);
 
       const region = pipeline.region || 'ap-northeast-2';
       let domain = null;
-
-      if (pipeline.matchedDomain?.domainName) {
-        domain = pipeline.matchedDomain.domainName;
-      } else if (pipeline.tags?.DomainName) {
-        domain = pipeline.tags.DomainName;
-      }
+      if (pipeline.matchedDomain?.domainName) domain = pipeline.matchedDomain.domainName;
+      else if (pipeline.tags?.DomainName) domain = pipeline.tags.DomainName;
 
       await loadLineage(pipeline.name, region, domain);
     },
@@ -944,16 +888,13 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
   const handleSchemaSelect = useCallback(
     async (schema) => {
       if (!schema || !selectedPipeline) return;
-
       setSelectedSchema(schema);
       setShowSchemaDropdown(false);
-
       await loadSchemaLineage(
         schema.name,
         selectedPipeline.name,
         selectedPipeline.region || 'ap-northeast-2'
       );
-
       setViewMode('schema');
       setShowPanel(false);
       setSelectedNode(null);
@@ -961,17 +902,10 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     [loadSchemaLineage, selectedPipeline]
   );
 
-  useEffect(() => {
-    loadPipelines({ regions: 'ap-northeast-2', includeLatestExec: true });
-  }, [loadPipelines]);
-
-
   const handleDomainSelect = (domain) => {
     setSelectedDomain(domain);
     setShowDomainDropdown(false);
     setSelectedPipeline(null);
-    setShowPipelineList(true);
-    
     setNodes([]);
     setEdges([]);
     setSelectedNode(null);
@@ -979,12 +913,29 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
     setSelectedNodeData(null);
   };
 
+  const getDomainPipelineCount = (domainId) => {
+    if (domainId === '__untagged__') {
+      return pipelines.filter((p) => {
+        const hasDomainTag = p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
+        return !hasDomainTag;
+      }).length;
+    }
+    return pipelines.filter((p) => {
+      if (p.matchedDomain) return p.matchedDomain.domainId === domainId;
+      if (p.tags && p.tags['sagemaker:domain-arn']) {
+        return p.tags['sagemaker:domain-arn'].includes(domainId);
+      }
+      return false;
+    }).length;
+  };
+
+  // 렌더링
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      {/* 헤더 영역 - 한 줄로 간소화 */}
+      {/* 헤더 */}
       <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm flex-shrink-0">
         <h1 className="text-2xl font-bold text-gray-800 mr-6">Lineage</h1>
-        
+
         {/* 도메인 선택 */}
         <div className="relative mr-4">
           <button
@@ -995,19 +946,21 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
             <span className="text-sm font-medium">{selectedDomain.name}</span>
             <ChevronDown className="w-4 h-4" />
           </button>
-          
+
           {showDomainDropdown && (
             <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-              <div 
-                onClick={() => handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })}
+              <div
+                onClick={() =>
+                  handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })
+                }
                 className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
               >
                 <div className="font-medium text-sm">전체 도메인</div>
                 <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
               </div>
-              
+
               {domainsSafe.map((domain) => (
-                <div 
+                <div
                   key={domain.id}
                   onClick={() => handleDomainSelect(domain)}
                   className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
@@ -1018,15 +971,15 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                   </div>
                 </div>
               ))}
-              
-              <div 
-                onClick={() => handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })}
+
+              <div
+                onClick={() =>
+                  handleDomainSelect({ id: '__untagged__', name: '태그 없음', region: 'ap-northeast-2' })
+                }
                 className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
               >
                 <div className="font-medium text-sm">태그 없음</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {getDomainPipelineCount('__untagged__')}개
-                </div>
+                <div className="text-xs text-gray-500 mt-1">{getDomainPipelineCount('__untagged__')}개</div>
               </div>
             </div>
           )}
@@ -1053,16 +1006,33 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
               </>
             )}
           </button>
-          
+
           {showDropdown && !loadingPipelines && (
             <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-              {filteredPipelines.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-500">
-                  파이프라인이 없습니다
-                </div>
-              ) : (
-                filteredPipelines.map((pipeline) => (
-                  <div 
+              {(() => {
+                const list =
+                  selectedDomain.id === '__all__'
+                    ? pipelines
+                    : selectedDomain.id === '__untagged__'
+                    ? pipelines.filter((p) => {
+                        const hasDomainTag =
+                          p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
+                        return !hasDomainTag;
+                      })
+                    : pipelines.filter((p) => {
+                        if (p.matchedDomain) return p.matchedDomain.domainId === selectedDomain.id;
+                        if (p.tags && p.tags['sagemaker:domain-arn']) {
+                          return p.tags['sagemaker:domain-arn'].includes(selectedDomain.id);
+                        }
+                        return false;
+                      });
+
+                if (list.length === 0) {
+                  return <div className="px-4 py-8 text-center text-gray-500">파이프라인이 없습니다</div>;
+                }
+
+                return list.map((pipeline) => (
+                  <div
                     key={pipeline.arn}
                     onClick={() => handlePipelineSelect(pipeline)}
                     className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
@@ -1070,13 +1040,13 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                     <div className="font-medium text-sm">{pipeline.name}</div>
                     <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
                   </div>
-                ))
-              )}
+                ));
+              })()}
             </div>
           )}
         </div>
 
-        {/* 관점 전환 버튼 */}
+        {/* 관점/스키마 */}
         {selectedPipeline && lineageData && (
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -1102,13 +1072,12 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
               <span className="text-sm font-medium">데이터 관점</span>
             </button>
 
-            {/* 스키마 선택 드롭다운 */}
             <div className="relative ml-2">
               <button
                 onClick={async () => {
                   const next = !showSchemaDropdown;
                   setShowSchemaDropdown(next);
-                  if (next&& selectedPipeline) {
+                  if (next && selectedPipeline) {
                     await loadSchemas(
                       selectedPipeline.name,
                       selectedPipeline.region || 'ap-northeast-2'
@@ -1116,17 +1085,14 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                   }
                 }}
                 disabled={!selectedPipeline}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors
-                  ${viewMode === 'schema'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  viewMode === 'schema'
                     ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
               >
                 <span className="text-sm font-medium">
-                  <button /* ... */>
-                    {selectedSchema
-                      ? `데이터셋: ${selectedSchema.name}`
-                      : '데이터셋 선택'}
-                  </button>
+                  {selectedSchema ? `데이터셋: ${selectedSchema.name}` : '데이터셋 선택'}
                 </span>
                 <ChevronDown className="w-4 h-4" />
               </button>
@@ -1142,8 +1108,9 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                         <div
                           key={table.name}
                           onClick={() => handleSchemaSelect(table)}
-                          className={`px-4 py-2 cursor-pointer border-b
-                            ${isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-gray-50'}`}
+                          className={`px-4 py-2 cursor-pointer border-b ${
+                            isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-gray-50'
+                          }`}
                         >
                           <div className="font-medium text-sm">{table.name}</div>
                           <div className="text-xs text-gray-500">
@@ -1153,9 +1120,7 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                       );
                     })
                   ) : (
-                    <div className="text-center py-4 text-gray-500">
-                      데이터셋 정보가 없습니다
-                    </div>
+                    <div className="text-center py-4 text-gray-500">데이터셋 정보가 없습니다</div>
                   )}
                 </div>
               )}
@@ -1163,12 +1128,10 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
           </div>
         )}
 
-        {/* 닫기 버튼 */}
         {selectedPipeline && (
           <button
             onClick={() => {
               setSelectedPipeline(null);
-              setShowPipelineList(true);
               setNodes([]);
               setEdges([]);
             }}
@@ -1179,10 +1142,10 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
         )}
       </div>
 
-      {/* 본문 영역 - 남은 공간 차지 */}
+      {/* 본문 */}
       <div className="flex-1 min-h-0 relative">
         {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-white/75 z-10">
             <div className="text-center">
               <Loader className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-2" />
               <p className="text-gray-600">라인리지를 불러오는 중...</p>
@@ -1222,62 +1185,56 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
           </div>
         )}
 
+        {/* 상세 패널 */}
         {showPanel && selectedNodeData && (
           <div className="absolute right-0 top-0 bottom-0 w-96 bg-white border-l border-gray-200 shadow-lg overflow-y-auto z-20">
             <div className="p-4">
               <div className="flex items-center justify-between mb-4 pb-3 border-b">
                 <h3 className="text-lg font-bold">Step Details</h3>
-                <button onClick={() => {
-                  setShowPanel(false);
-                  onPaneClick();
-                }} className="p-1 hover:bg-gray-100 rounded">
+                <button
+                  onClick={() => {
+                    setShowPanel(false);
+                    onPaneClick();
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="space-y-6 text-sm">
-                {/* Basic Information Section */}
+                {/* Basic Information */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                    <div className="w-1 h-5 bg-blue-600 rounded" />
                     <h4 className="font-bold text-gray-800">Basic Information</h4>
                   </div>
                   <div className="space-y-3 pl-3">
-                    {/* Step ID */}
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Step ID</div>
-                      <div className="font-medium break-all">{selectedNodeData.id || selectedNodeData.label}</div>
+                      <div className="font-medium break-all">
+                        {selectedNodeData.id || selectedNodeData.label}
+                      </div>
                     </div>
-
-                    {/* Type */}
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Type</div>
-                      <div className="font-medium">{safeValue(selectedNodeData.type || selectedNodeData.stepType)}</div>
+                      <div className="font-medium">
+                        {safeValue(selectedNodeData.type || selectedNodeData.stepType)}
+                      </div>
                     </div>
 
-                    {/* Status - processNode만 */}
-                    {selectedNodeData.type === 'processNode' && selectedNodeData.run?.status && (
+                    {selectedNodeData.run?.status && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Status</div>
                         <div className="flex items-center gap-2">
                           {getStatusIcon(selectedNodeData.run.status)}
-                          <span className="font-medium">{safeValue(selectedNodeData.run.status)}</span>
+                          <span className="font-medium">
+                            {safeValue(selectedNodeData.run.status)}
+                          </span>
                         </div>
                       </div>
                     )}
 
-                    {/* Status - 파이프라인 관점 */}
-                    {viewMode === 'pipeline' && selectedNodeData.run?.status && (
-                      <div>
-                        <div className="text-xs text-gray-500 mb-1">Status</div>
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(selectedNodeData.run.status)}
-                          <span className="font-medium">{safeValue(selectedNodeData.run.status)}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Job Name */}
                     {selectedNodeData.run?.jobName && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Job Name</div>
@@ -1286,8 +1243,6 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                         </div>
                       </div>
                     )}
-
-                    {/* Job ARN */}
                     {selectedNodeData.run?.jobArn && (
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Job ARN</div>
@@ -1299,15 +1254,14 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                   </div>
                 </div>
 
-                {/* Execution Info Section - processNode만 */}
-                {selectedNodeData.type === 'processNode' && selectedNodeData.run && (
+                {/* Execution Info */}
+                {selectedNodeData.run && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                      <div className="w-1 h-5 bg-blue-600 rounded" />
                       <h4 className="font-bold text-gray-800">Execution Info</h4>
                     </div>
                     <div className="space-y-3 pl-3">
-                      {/* Start Time */}
                       {selectedNodeData.run.startTime && (
                         <div>
                           <div className="text-xs text-gray-500 mb-1">Start Time</div>
@@ -1319,13 +1273,11 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                               hour: '2-digit',
                               minute: '2-digit',
                               second: '2-digit',
-                              hour12: false
+                              hour12: false,
                             })}
                           </div>
                         </div>
                       )}
-
-                      {/* End Time */}
                       {selectedNodeData.run.endTime && (
                         <div>
                           <div className="text-xs text-gray-500 mb-1">End Time</div>
@@ -1337,111 +1289,70 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                               hour: '2-digit',
                               minute: '2-digit',
                               second: '2-digit',
-                              hour12: false
+                              hour12: false,
                             })}
                           </div>
                         </div>
                       )}
-
-                      {/* Duration */}
                       {selectedNodeData.run.elapsedSec != null && (
                         <div>
                           <div className="text-xs text-gray-500 mb-1">Duration</div>
-                          <div className="font-medium">{formatDuration(selectedNodeData.run.elapsedSec)}</div>
+                          <div className="font-medium">
+                            {formatDuration(selectedNodeData.run.elapsedSec)}
+                          </div>
                         </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* Execution Info Section - 파이프라인 관점 */}
-                {viewMode === 'pipeline' && selectedNodeData.run && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
-                      <h4 className="font-bold text-gray-800">Execution Info</h4>
-                    </div>
-                    <div className="space-y-3 pl-3">
-                      {/* Start Time */}
-                      {selectedNodeData.run.startTime && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Start Time</div>
-                          <div className="font-medium">
-                            {new Date(selectedNodeData.run.startTime).toLocaleString('ko-KR', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                              hour12: false
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* End Time */}
-                      {selectedNodeData.run.endTime && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">End Time</div>
-                          <div className="font-medium">
-                            {new Date(selectedNodeData.run.endTime).toLocaleString('ko-KR', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                              hour12: false
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Duration */}
-                      {selectedNodeData.run.elapsedSec != null && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Duration</div>
-                          <div className="font-medium">{formatDuration(selectedNodeData.run.elapsedSec)}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Data Location Section - dataArtifact만 */}
+                {/* Data Location (dataArtifact 전용) */}
                 {selectedNodeData.type === 'dataArtifact' && selectedNodeData.uri && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
+                      <div className="w-1 h-5 bg-blue-600 rounded" />
                       <h4 className="font-bold text-gray-800">Data Location</h4>
                     </div>
                     <div className="space-y-3 pl-3">
                       <div className="font-mono text-xs break-all text-blue-600 mb-3">
                         {selectedNodeData.uri}
                       </div>
-                      
+
                       {selectedNodeData.meta?.s3 && (
                         <>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Bucket:</div>
-                            <div className="font-medium">{selectedNodeData.meta.s3.bucket}</div>
+                            <div className="text-xs text-gray-500 mb-1">Bucket</div>
+                            <div className="font-medium">
+                              {selectedNodeData.meta.s3.bucket}
+                            </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Region:</div>
-                            <div className="font-medium">{selectedNodeData.meta.s3.region}</div>
+                            <div className="text-xs text-gray-500 mb-1">Region</div>
+                            <div className="font-medium">
+                              {selectedNodeData.meta.s3.region}
+                            </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Encryption:</div>
-                            <div className="font-medium">{selectedNodeData.meta.s3.encryption}</div>
+                            <div className="text-xs text-gray-500 mb-1">Encryption</div>
+                            <div className="font-medium">
+                              {selectedNodeData.meta.s3.encryption}
+                            </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Versioning:</div>
-                            <div className="font-medium">{selectedNodeData.meta.s3.versioning}</div>
+                            <div className="text-xs text-gray-500 mb-1">Versioning</div>
+                            <div className="font-medium">
+                              {selectedNodeData.meta.s3.versioning}
+                            </div>
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-1">Public Access:</div>
-                            <div className={`font-medium ${selectedNodeData.meta.s3.publicAccess === 'Blocked' ? 'text-green-600' : 'text-red-600'}`}>
+                            <div className="text-xs text-gray-500 mb-1">Public Access</div>
+                            <div
+                              className={`font-medium ${
+                                selectedNodeData.meta.s3.publicAccess === 'Blocked'
+                                  ? 'text-green-600'
+                                  : 'text-red-600'
+                              }`}
+                            >
                               {selectedNodeData.meta.s3.publicAccess}
                             </div>
                           </div>
@@ -1451,117 +1362,204 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
                   </div>
                 )}
 
-                {/* Inputs Section - 파이프라인 관점만 (viewMode === 'pipeline') */}
-                {viewMode === 'pipeline' && selectedNodeData.inputs && selectedNodeData.inputs.length > 0 && (
+                {/* 🔴 PII Detection (dataArtifact 전용) */}
+                {selectedNodeData.type === 'dataArtifact' && (
                   <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
-                      <h4 className="font-bold text-gray-800">Inputs ({selectedNodeData.inputs.length})</h4>
-                    </div>
-                    <div className="space-y-3 pl-3">
-                      {selectedNodeData.inputs.map((input, idx) => {
-                        const uri = safeValue(input.uri);
-                        const isS3Uri = uri.startsWith('s3://');
-                        const bucket = isS3Uri ? uri.split('/')[2] : null;
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1 h-5 bg-red-600 rounded" />
+                        <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                          PII Detection
+                          <ShieldAlert className="w-4 h-4 text-red-600" />
+                        </h4>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setRevealPII((v) => !v)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                          title={revealPII ? '가려보기' : '일부 보기'}
+                        >
+                          {revealPII ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          {revealPII ? 'Mask' : 'Unmask'}
+                        </button>
 
-                        return (
-                          <div key={idx} className="border-l-2 border-blue-200 pl-3">
-                            <div className="font-semibold text-sm mb-2">{input.name}</div>
-                            <div className="font-mono text-xs break-all text-blue-600 bg-blue-50 p-2 rounded mb-2">
-                              {uri}
-                            </div>
-                            {isS3Uri && bucket && (
-                              <div className="space-y-1 text-xs">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Bucket:</span>
-                                  <span className="font-mono">{bucket}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Region:</span>
-                                  <span>{selectedNodeData.meta?.s3?.region || 'Unknown'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Encryption:</span>
-                                  <span>{selectedNodeData.meta?.s3?.encryption || 'Unknown'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Versioning:</span>
-                                  <span>{selectedNodeData.meta?.s3?.versioning || 'Unknown'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Public Access:</span>
-                                  <span className={selectedNodeData.meta?.s3?.publicAccess === 'Blocked' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                                    {selectedNodeData.meta?.s3?.publicAccess || 'Unknown'}
-                                  </span>
-                                </div>
-                              </div>
+                        {/* 수동 오버라이드 버튼 */}
+                        {(() => {
+                          const key = getOverrideKey({ nodeData: selectedNodeData });
+                          const override = piiOverrides[key];
+                          return override?.hasPII ? (
+                            <button
+                              onClick={() =>
+                                setPiiOverrides((prev) => {
+                                  const next = { ...prev };
+                                  delete next[key];
+                                  return next;
+                                })
+                              }
+                              className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                              title="이 노드의 PII 강제 표시 해제"
+                            >
+                              강제 해제
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const now = new Date().toISOString();
+                                setPiiOverrides((prev) => ({
+                                  ...prev,
+                                  [key]: {
+                                    hasPII: true,
+                                    types: ['NAME', 'EMAIL'],
+                                    fields: ['customer_name', 'email'],
+                                    sampleValues: ['홍길동', 'test@example.com'],
+                                    lastScanAt: now,
+                                    scanner: 'Manual-Override',
+                                    riskScore: 80,
+                                  },
+                                }));
+                              }}
+                              className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                              title="이 노드를 PII 있음으로 강제 표시"
+                            >
+                              강제로 PII 표시
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore } =
+                        extractPIIMeta({ nodeData: selectedNodeData });
+
+                      return (
+                        <div className="space-y-3 pl-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Has PII</span>
+                            <span
+                              className={`px-2 py-0.5 text-xs rounded-full border ${
+                                hasPII
+                                  ? 'bg-red-50 text-red-700 border-red-200'
+                                  : 'bg-green-50 text-green-700 border-green-200'
+                              }`}
+                            >
+                              {hasPII ? 'Yes' : 'No'}
+                            </span>
+                            {typeof riskScore === 'number' && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                Risk Score:{' '}
+                                <span
+                                  className={`font-semibold ${
+                                    riskScore >= 70
+                                      ? 'text-red-600'
+                                      : riskScore >= 40
+                                      ? 'text-yellow-600'
+                                      : 'text-green-600'
+                                  }`}
+                                >
+                                  {riskScore}
+                                </span>
+                              </span>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
-                {/* Outputs Section - 파이프라인 관점만 (viewMode === 'pipeline') */}
-                {viewMode === 'pipeline' && selectedNodeData.outputs && selectedNodeData.outputs.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-blue-600 rounded"></div>
-                      <h4 className="font-bold text-gray-800">Outputs ({selectedNodeData.outputs.length})</h4>
-                    </div>
-                    <div className="space-y-3 pl-3">
-                      {selectedNodeData.outputs.map((output, idx) => {
-                        const uri = safeValue(output.uri);
-                        const isS3Uri = uri.startsWith('s3://');
-                        const bucket = isS3Uri ? uri.split('/')[2] : null;
-
-                        return (
-                          <div key={idx} className="border-l-2 border-green-200 pl-3">
-                            <div className="font-semibold text-sm mb-2">{output.name}</div>
-                            <div className="font-mono text-xs break-all text-green-600 bg-green-50 p-2 rounded mb-2">
-                              {uri}
-                            </div>
-                            {isS3Uri && bucket && (
-                              <div className="space-y-1 text-xs">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Bucket:</span>
-                                  <span className="font-mono">{bucket}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Region:</span>
-                                  <span>{selectedNodeData.meta?.s3?.region || 'Unknown'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Encryption:</span>
-                                  <span>{selectedNodeData.meta?.s3?.encryption || 'Unknown'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Versioning:</span>
-                                  <span>{selectedNodeData.meta?.s3?.versioning || 'Unknown'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Public Access:</span>
-                                  <span className={selectedNodeData.meta?.s3?.publicAccess === 'Blocked' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                                    {selectedNodeData.meta?.s3?.publicAccess || 'Unknown'}
+                          {types?.length > 0 && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Types</div>
+                              <div className="flex flex-wrap gap-1">
+                                {types.map((t, i) => (
+                                  <span
+                                    key={`${t}-${i}`}
+                                    className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border border-gray-200"
+                                  >
+                                    {t}
                                   </span>
-                                </div>
+                                ))}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            </div>
+                          )}
+
+                          {fields?.length > 0 && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Fields</div>
+                              <div className="flex flex-wrap gap-1">
+                                {fields.map((f, i) => (
+                                  <span
+                                    key={`${f}-${i}`}
+                                    className="px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200"
+                                  >
+                                    {f}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {sampleValues?.length > 0 && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Samples</div>
+                              <ul className="space-y-1">
+                                {sampleValues.slice(0, 5).map((v, i) => {
+                                  const masked =
+                                    typeof v === 'string' && !revealPII
+                                      ? v.replace(/[\S]/g, (c, idx) => (idx % 3 === 0 ? c : '•'))
+                                      : v;
+                                  return (
+                                    <li
+                                      key={`sv-${i}`}
+                                      className="font-mono text-xs break-all bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                                    >
+                                      {masked}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                              {!revealPII && (
+                                <div className="text-[11px] text-gray-500 mt-1">
+                                  일부 문자는 마스킹되어 표시됩니다.
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {(lastScanAt || scanner) && (
+                            <div className="text-xs text-gray-500">
+                              {scanner && <span>Scanner: {scanner}</span>}
+                              {scanner && lastScanAt && <span className="mx-1">·</span>}
+                              {lastScanAt && (
+                                <span>
+                                  Last Scan{' '}
+                                  {new Date(lastScanAt).toLocaleString('ko-KR', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: false,
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {!hasPII && types.length === 0 && fields.length === 0 && (
+                            <div className="text-xs text-gray-500">
+                              스캔 결과 PII 항목이 발견되지 않았습니다.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
             </div>
           </div>
         )}
-
       </div>
 
-      {/* 하단 통계 영역 - 128px 고정 */}
+      {/* 하단 요약 */}
       {selectedPipeline && lineageData?.summary && (
         <div className="h-32 p-4 bg-white border-t border-gray-200 flex-shrink-0">
           <div className="grid grid-cols-4 gap-4 h-full">
@@ -1574,7 +1572,9 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm border">
               <p className="text-sm text-gray-600">Failed Steps</p>
-              <p className="text-2xl font-bold text-red-600">{lineageData.summary.nodeStatus?.Failed || 0}</p>
+              <p className="text-2xl font-bold text-red-600">
+                {lineageData.summary.nodeStatus?.Failed || 0}
+              </p>
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm border">
               <p className="text-sm text-gray-600">Total Steps</p>
@@ -1586,10 +1586,8 @@ const [selectedNodeData, setSelectedNodeData] = useState(null);
             </div>
           </div>
         </div>
-        
       )}
     </div>
-
   );
 };
 
