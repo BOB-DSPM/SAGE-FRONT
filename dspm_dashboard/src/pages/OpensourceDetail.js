@@ -156,7 +156,7 @@ function Copyable({ text }) {
   );
 }
 
-function LogConsole({ title, text, height = 450, follow = true, onFollowChange }) {
+function LogConsole({ title, text, height = 600, follow = true, onFollowChange }) {
   const viewRef = useRef(null);
   useEffect(() => {
     if (follow && viewRef.current) {
