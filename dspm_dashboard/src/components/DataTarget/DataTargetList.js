@@ -1,4 +1,4 @@
-// src/components/DataTarget/DataTargetList.js - 스캔과 조회 분리
+// src/components/DataTarget/DataTargetList.js - 수정된 버전
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ResourceCard from './ResourceCard';
@@ -139,7 +139,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
   };
 
-  // 교차 검증 리포트 조회 (스캔 없이 저장된 결과만 가져오기)
+  // 교차 검증 리포트 조회
   const getCrossCheckReport = async () => {
     try {
       console.log('=== 교차 검증 리포트 조회 시작 ===');
@@ -150,10 +150,24 @@ const DataTargetList = ({ inventoryData, loading }) => {
 
       if (!response.ok) {
         const errorText = await response.text();
+        
+        // 404는 리포트가 없는 것이므로 null 반환
+        if (response.status === 404) {
+          console.log('리포트가 존재하지 않음 (404)');
+          return null;
+        }
+        
         throw new Error(`리포트 조회 실패: ${response.status}`);
       }
 
       const report = await response.json();
+      
+      // error 필드가 있으면 null 반환
+      if (report && report.error) {
+        console.log('리포트에 에러 필드 존재:', report.error);
+        return null;
+      }
+      
       console.log('✓ 교차 검증 리포트 조회 완료:', report);
       
       return report;
@@ -209,7 +223,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
     }
   };
 
-  // 위협 식별 결과 조회 (저장된 결과만 조회)
+  // 위협 식별 결과 조회 (리포트 확인 후 필요시 스캔)
   const handleSendToAnalyzer = async () => {
     if (selectedResources.size === 0) {
       alert('위협 식별할 저장소를 선택해주세요.');
@@ -226,7 +240,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
 
       console.log('선택된 리소스:', selectedItems);
 
-      // RDS 인스턴스 확인 (정보용)
+      // RDS 인스턴스 확인
       const rdsInstances = selectedItems.filter(item => item.type === 'rds');
       const hasRds = rdsInstances.length > 0;
 
@@ -245,22 +259,53 @@ const DataTargetList = ({ inventoryData, loading }) => {
         console.error('에러:', error);
       }
 
-      // Step 2: 교차 검증 리포트 조회 (저장된 결과만)
-      console.log('\n[2/2] 보유기간 만료 리포트 조회 시작...');
+      // Step 2: 교차 검증 리포트 확인 및 필요시 실행
+      console.log('\n[2/2] 교차 검증 리포트 확인 시작...');
       
       let crossCheckReport = null;
       try {
         crossCheckReport = await getCrossCheckReport();
-        console.log('✓ Step 2 완료: 보유기간 만료 리포트 조회');
+        
+        // 리포트가 없거나 에러인 경우 → 새로 스캔 실행
+        if (!crossCheckReport || crossCheckReport.error) {
+          console.log('리포트가 없거나 유효하지 않음. 새로 스캔을 실행합니다...');
+          
+          if (hasRds) {
+            // RDS 자동 스캔 실행
+            console.log('\n[2-1/2] RDS 자동 스캔 시작...');
+            try {
+              await runRdsAutoScan();
+              console.log('✓ RDS 자동 스캔 완료');
+            } catch (error) {
+              console.error('✗ RDS 자동 스캔 실패:', error);
+            }
+            
+            // RDS-S3 교차 검증 실행
+            console.log('\n[2-2/2] RDS-S3 교차 검증 시작...');
+            try {
+              await runCrossCheck();
+              console.log('✓ RDS-S3 교차 검증 완료');
+              
+              // 새로 생성된 리포트 다시 조회
+              crossCheckReport = await getCrossCheckReport();
+            } catch (error) {
+              console.error('✗ RDS-S3 교차 검증 실패:', error);
+            }
+          } else {
+            console.log('RDS가 선택되지 않아 교차 검증을 건너뜁니다.');
+          }
+        } else {
+          console.log('✓ Step 2 완료: 기존 리포트 사용');
+        }
       } catch (error) {
-        console.error('✗ Step 2 실패: 보유기간 만료 리포트 조회');
+        console.error('✗ Step 2 실패: 교차 검증 리포트 처리');
         console.error('에러:', error);
       }
 
       console.log('\n========== 결과 조회 완료 ==========\n');
       console.log('결과 요약:');
       console.log('- 위협 식별:', results ? '성공' : '실패');
-      console.log('- 리포트:', crossCheckReport ? '성공' : '실패');
+      console.log('- 리포트:', crossCheckReport ? '성공' : '없음');
 
       // 결과 페이지로 이동
       console.log('\n결과 페이지로 이동...');
@@ -340,7 +385,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
                 {filteredResources.length > 0 && filteredResources.every(r => selectedResources.has(r.id)) ? '전체 해제' : '전체 선택'}
               </button>
 
-              {/* 위협 식별 시작 버튼 - 조회만 */}
+              {/* 위협 식별 결과 조회 버튼 */}
               {selectedResources.size > 0 && (
                 <button
                   onClick={handleSendToAnalyzer}

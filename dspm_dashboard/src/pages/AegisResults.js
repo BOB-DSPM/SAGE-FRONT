@@ -673,7 +673,7 @@ const AegisResults = () => {
                           <span className="text-sm text-gray-900 font-mono">{hit.text}</span>
                         </div>
                         <span className="text-xs text-gray-600">
-                          신뢰도: {(hit.confidence * 100).toFixed(1)}%
+                          신뢰도: {(hit.score * 100).toFixed(1)}%
                         </span>
                       </div>
                     ))}
