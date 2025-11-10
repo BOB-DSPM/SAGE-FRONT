@@ -1,4 +1,6 @@
+// ==============================
 // src/pages/OpensourceDetail.js
+// ==============================
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
@@ -302,9 +304,7 @@ export default function OpensourceDetail() {
         setLatestTime(maxMtime(latest.files));
       } catch (e) {
         // 최근 실행 조회 실패는 치명적이지 않으니 토스트/메시지 없이 지나감
-        // 필요 시 아래 주석 해제
-        // setError(String(e));
-      }
+      };
     })();
   }, [detail, code]);
 

@@ -1,3 +1,6 @@
+// ==============================
+// src/services/ossApi.js
+// ==============================
 const API_BASE = process.env.REACT_APP_OSS_BASE || "http://43.202.228.52:8800/oss";
 const DEFAULT_DIR = () =>
   localStorage.getItem("oss.directory") || process.env.REACT_APP_OSS_WORKDIR || "/workspace";
@@ -46,3 +49,4 @@ export async function simulateUse(code, payload) {
     body: JSON.stringify(withDir),
   });
 }
+
