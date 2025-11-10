@@ -1,5 +1,6 @@
 // ==============================
 // src/pages/OpensourceDetail.js
+// (Run 버튼 포함 상세 페이지)
 // ==============================
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
@@ -24,9 +25,7 @@ import {
 import { getDetail, runTool, getLatestRun, streamRun } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
 
-// ──────────────────────────────────────────────────────────────
-// Utilities
-// ──────────────────────────────────────────────────────────────
+// ─ Utilities ─
 const getDefaultDir = () =>
   localStorage.getItem("oss.directory") ||
   process.env.REACT_APP_OSS_WORKDIR ||
@@ -70,7 +69,6 @@ function clsx(...parts) {
   return parts.filter(Boolean).join(" ");
 }
 
-// 가장 최신 mtime(초) 추출
 function maxMtime(files = []) {
   let m = 0;
   for (const f of files) {
@@ -79,7 +77,7 @@ function maxMtime(files = []) {
   return m || null;
 }
 
-// ──────────────────────────────────────────────────────────────
+// ─ UI frags ─
 function Section({ title, children, right }) {
   return (
     <div className="bg-white p-5 rounded-2xl shadow-sm border">
@@ -193,9 +191,7 @@ function LogConsole({ title, text, height = 360, follow = true, onFollowChange }
   );
 }
 
-// ──────────────────────────────────────────────────────────────
-// Main
-// ──────────────────────────────────────────────────────────────
+// ─ Main ─
 export default function OpensourceDetail() {
   const { code } = useParams();
 
@@ -236,7 +232,7 @@ export default function OpensourceDetail() {
     if (form?.directory) localStorage.setItem("oss.directory", form.directory);
   }, [form?.directory]);
 
-  // 1) 페이지 진입 시 상세 로드
+  // 1) 상세 로드
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -281,18 +277,18 @@ export default function OpensourceDetail() {
     })();
   }, [code]);
 
-  // 2) 상세 로드가 끝나면 "최근 실행 결과" 자동 조회
+  // 2) 최근 실행 자동 조회
   useEffect(() => {
     if (!detail) return;
     (async () => {
       try {
         const latest = await getLatestRun(code);
-        if (!latest) return; // 404
+        if (!latest) return;
         setRunRes(latest);
         setFromLatest(true);
         setLatestTime(maxMtime(latest.files));
-      } catch (e) {
-        // 필요 시: setError(String(e));
+      } catch {
+        /* noop */
       }
     })();
   }, [detail, code]);
@@ -326,16 +322,6 @@ export default function OpensourceDetail() {
     } finally {
       setRunLoading(false);
     }
-  };
-
-  const copyCmd = async () => {
-    const cmd = runRes?.command;
-    if (!cmd) return;
-    try {
-      await navigator.clipboard.writeText(cmd);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {}
   };
 
   // 4) 실행 (실시간)
@@ -387,9 +373,17 @@ export default function OpensourceDetail() {
     setStreamErr("");
   };
 
-  const hasOptions = Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0;
+  const copyCmd = async () => {
+    const cmd = runRes?.command;
+    if (!cmd) return;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
 
-  // Quick artifacts detector (top-level preferred)
+  // artifacts
   const files = runRes?.files || [];
   const top = (ext) => files.find((f) => !String(f.path).includes("/") && f.path.endsWith(ext));
   const artHtml = top(".html");
@@ -475,7 +469,7 @@ export default function OpensourceDetail() {
               )
             )}
 
-            {/* Working dir + Options */}
+            {/* Working dir */}
             <Section title="Working Directory">
               <input
                 className="border rounded-lg px-3 py-2 w-full"
@@ -486,6 +480,7 @@ export default function OpensourceDetail() {
               <p className="text-xs text-gray-500 mt-1">* 일부 도구는 <code>directory</code>가 필수입니다.</p>
             </Section>
 
+            {/* Options */}
             {Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0 && (
               <Section title="Options">
                 <div className="grid md:grid-cols-2 gap-4">
@@ -580,9 +575,7 @@ export default function OpensourceDetail() {
 
               {runRes?.command && (
                 <button
-                  onClick={async () => {
-                    await copyCmd();
-                  }}
+                  onClick={copyCmd}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border hover:bg-gray-50 shadow-sm"
                 >
                   {copied ? <ClipboardCheck className="w-4 h-4" /> : <Clipboard className="w-4 h-4" />}

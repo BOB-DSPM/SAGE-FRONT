@@ -1,5 +1,6 @@
 // ==============================
 // src/services/ossApi.js
+// (fetch 유틸만 유지; React 컴포넌트 금지)
 // ==============================
 const API_BASE =
   process.env.REACT_APP_OSS_BASE || "http://43.202.228.52:8800/oss";
@@ -16,9 +17,7 @@ async function _fetchJSON(url, options = {}) {
   });
   if (!res.ok) {
     let text = "";
-    try {
-      text = await res.text();
-    } catch {}
+    try { text = await res.text(); } catch {}
     throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
   }
   return res.json();
@@ -56,27 +55,20 @@ export async function runTool(code, payload) {
   });
 }
 
-// ──────────────────────────────────────────────────────────────
-// 새로 추가: 최근 실행 결과 조회 (없으면 null 반환)
-// ──────────────────────────────────────────────────────────────
+// 최근 실행 결과
 export async function getLatestRun(code) {
   const url = `${API_BASE}/api/oss/${encodeURIComponent(code)}/runs/latest`;
   const res = await fetch(url, { method: "GET" });
   if (res.status === 404) return null;
   if (!res.ok) {
     let text = "";
-    try {
-      text = await res.text();
-    } catch {}
+    try { text = await res.text(); } catch {}
     throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
   }
   return res.json();
 }
 
-// ──────────────────────────────────────────────────────────────
-// 새로 추가: 실시간 실행 스트림
-// onChunk(chunk)로 수신 조각을 전달 (텍스트)
-// ──────────────────────────────────────────────────────────────
+// 실시간 실행 스트림
 export async function streamRun(code, payload, onChunk) {
   const withDir = ensureDirectory(payload || {});
   const res = await fetch(

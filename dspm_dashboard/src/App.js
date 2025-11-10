@@ -1,4 +1,7 @@
+// ==============================
 // src/App.js
+// (사용자 제공안 + /opensource/:code 상세 라우트 포함)
+// ==============================
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 //import Login from './pages/Login';
