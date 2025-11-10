@@ -1,12 +1,33 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Play, Clipboard, ClipboardCheck, ArrowLeft, Activity, RefreshCw } from "lucide-react";
+import {
+  Play,
+  Clipboard,
+  ClipboardCheck,
+  ArrowLeft,
+  Activity,
+  RefreshCw,
+  Download,
+  ExternalLink,
+  FileText,
+  FileJson,
+  FileSpreadsheet,
+  Terminal,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+} from "lucide-react";
 import { getDetail, runTool } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
 
+// ──────────────────────────────────────────────────────────────
+// Utilities
+// ──────────────────────────────────────────────────────────────
 const API_BASE = process.env.REACT_APP_OSS_BASE || "/oss";
 const getDefaultDir = () =>
-  localStorage.getItem("oss.directory") || process.env.REACT_APP_OSS_WORKDIR || "/workspace";
+  localStorage.getItem("oss.directory") ||
+  process.env.REACT_APP_OSS_WORKDIR ||
+  "/workspace";
 
 function validateRequired(detail, form) {
   const required = (detail?.detail?.options || []).filter((o) => o.required);
@@ -20,6 +41,149 @@ function validateRequired(detail, form) {
   return missing;
 }
 
+function stripAnsi(s = "") {
+  return s.replace(
+    /\u001b\[[0-9;]*[a-zA-Z]/g,
+    ""
+  );
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0 || bytes === undefined || bytes === null) return "-";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+function clsx(...parts) {
+  return parts.filter(Boolean).join(" ");
+}
+
+// ──────────────────────────────────────────────────────────────
+// Reusable UI pieces
+// ──────────────────────────────────────────────────────────────
+function Section({ title, children, right }) {
+  return (
+    <div className="bg-white p-5 rounded-2xl shadow-sm border">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-base font-medium">{title}</div>
+        {right}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Badge({ children, tone = "gray" }) {
+  const toneMap = {
+    gray: "bg-gray-100 text-gray-700",
+    green: "bg-green-100 text-green-700",
+    red: "bg-red-100 text-red-700",
+    blue: "bg-blue-100 text-blue-700",
+    amber: "bg-amber-100 text-amber-700",
+  };
+  return (
+    <span className={clsx("text-xs px-2 py-1 rounded-full", toneMap[tone])}>{children}</span>
+  );
+}
+
+function Collapsible({ title, children, defaultOpen = false, right }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border rounded-xl">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+      >
+        <div className="flex items-center gap-2">
+          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <span className="text-sm font-medium">{title}</span>
+        </div>
+        <div>{right}</div>
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
+
+function ButtonLink({ href, children }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50"
+    >
+      {children}
+    </a>
+  );
+}
+
+function Copyable({ text }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text || "");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
+  return (
+    <button
+      onClick={onCopy}
+      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-gray-50"
+    >
+      {copied ? <ClipboardCheck className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function LogConsole({ title, text, height = 360, follow = true, onFollowChange }) {
+  const viewRef = useRef(null);
+  useEffect(() => {
+    if (follow && viewRef.current) {
+      viewRef.current.scrollTop = viewRef.current.scrollHeight;
+    }
+  }, [text, follow]);
+
+  return (
+    <Section
+      title={
+        <div className="flex items-center gap-2">
+          <Terminal className="w-4 h-4" />
+          <span>{title || "Console"}</span>
+          <Badge>live</Badge>
+        </div>
+      }
+      right={
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          <input
+            type="checkbox"
+            className="rounded border-gray-300"
+            checked={follow}
+            onChange={(e) => onFollowChange?.(e.target.checked)}
+          />
+          Auto-follow
+        </label>
+      }
+    >
+      <div
+        ref={viewRef}
+        className="bg-black text-gray-100 rounded-xl p-3 font-mono text-[11px] leading-5 overflow-auto"
+        style={{ height }}
+      >
+        {stripAnsi(text || "")}
+      </div>
+    </Section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
+// Main component
+// ──────────────────────────────────────────────────────────────
 export default function OpensourceDetail() {
   const { code } = useParams();
   const [detail, setDetail] = useState(null);
@@ -42,18 +206,14 @@ export default function OpensourceDetail() {
   const [liveLog, setLiveLog] = useState("");
   const [summary, setSummary] = useState(null);
   const [streamErr, setStreamErr] = useState("");
+  const [followTail, setFollowTail] = useState(true);
 
-  const logRef = useRef(null);
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [liveLog]);
+  const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
+  const iconSrc = iconMap[code];
 
   useEffect(() => {
     if (form?.directory) localStorage.setItem("oss.directory", form.directory);
   }, [form?.directory]);
-
-  const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
-  const iconSrc = iconMap[code];
 
   useEffect(() => {
     (async () => {
@@ -197,12 +357,23 @@ export default function OpensourceDetail() {
 
   const hasOptions = Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0;
 
+  // Quick artifacts detector (top-level preferred)
+  const files = runRes?.files || [];
+  const top = (ext) => files.find((f) => !String(f.path).includes("/") && f.path.endsWith(ext));
+  const artHtml = top(".html");
+  const artCsv = top(".csv");
+  const artJson = top(".ocsf.json");
+  const artLog = files.find((f) => f.path === "log.txt");
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Link to="/overview" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100">
+            <Link
+              to="/overview"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100"
+            >
               <ArrowLeft className="w-4 h-4" />
               Dashboard
             </Link>
@@ -215,9 +386,14 @@ export default function OpensourceDetail() {
 
         {!loading && detail && (
           <div className="space-y-6">
-            <div className="flex items-start gap-4 bg-white p-5 rounded-xl shadow-sm">
+            {/* Header card */}
+            <div className="flex items-start gap-4 bg-white p-5 rounded-2xl shadow-sm border">
               <div className="shrink-0">
-                {iconSrc ? <img src={iconSrc} alt={`${detail.name} icon`} className="w-12 h-12 rounded-lg" /> : <div className="w-12 h-12 rounded-lg bg-gray-100 border" />}
+                {iconSrc ? (
+                  <img src={iconSrc} alt={`${detail.name} icon`} className="w-12 h-12 rounded-lg" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-gray-100 border" />
+                )}
               </div>
               <div className="min-w-0">
                 <div className="text-xl font-semibold">{detail.name}</div>
@@ -226,35 +402,39 @@ export default function OpensourceDetail() {
                 {Array.isArray(detail.tags) && detail.tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {detail.tags.map((t) => (
-                      <span key={t} className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">#{t}</span>
+                      <span key={t} className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                        #{t}
+                      </span>
                     ))}
                   </div>
                 )}
-                {detail.license && <div className="text-xs text-gray-500 mt-2">License: {detail.license}</div>}
+                {detail.license && (
+                  <div className="text-xs text-gray-500 mt-2">License: {detail.license}</div>
+                )}
               </div>
             </div>
 
             {detail?.detail?.about && (
-              <div className="bg-white p-5 rounded-xl shadow-sm">
-                <div className="text-base font-medium mb-2">About</div>
+              <Section title="About">
                 <p className="text-sm text-gray-700">{detail.detail.about}</p>
-              </div>
+              </Section>
             )}
 
-            <div className="bg-white p-5 rounded-xl shadow-sm">
-              <div className="text-base font-medium mb-2">Working Directory</div>
+            {/* Working dir + Options */}
+            <Section title="Working Directory">
               <input
                 className="border rounded-lg px-3 py-2 w-full"
                 placeholder="/workspace (컨테이너 내부 또는 서버 기준 경로)"
                 value={form.directory || ""}
                 onChange={(e) => onChangeField("directory", e.target.value)}
               />
-              <p className="text-xs text-gray-500 mt-1">* 일부 도구는 <code>directory</code>가 필수입니다.</p>
-            </div>
+              <p className="text-xs text-gray-500 mt-1">
+                * 일부 도구는 <code>directory</code>가 필수입니다.
+              </p>
+            </Section>
 
             {hasOptions && (
-              <div className="bg-white p-5 rounded-xl shadow-sm">
-                <div className="text-base font-medium mb-3">Options</div>
+              <Section title="Options">
                 <div className="grid md:grid-cols-2 gap-4">
                   {detail.detail.options.map((opt) => {
                     const key = opt.key;
@@ -267,16 +447,28 @@ export default function OpensourceDetail() {
                       return (
                         <div key={key} className="flex flex-col">
                           <label className="text-sm text-gray-700">{opt.label}</label>
-                          <select className="border rounded-lg px-3 py-2" value={form[key] ?? opt.default ?? ""} onChange={(e) => onChangeField(key, e.target.value)}>
-                            <option value="" disabled>선택…</option>
-                            {opt.values?.map((v) => (<option key={v} value={v}>{v}</option>))}
+                          <select
+                            className="border rounded-lg px-3 py-2"
+                            value={form[key] ?? opt.default ?? ""}
+                            onChange={(e) => onChangeField(key, e.target.value)}
+                          >
+                            <option value="" disabled>
+                              선택…
+                            </option>
+                            {opt.values?.map((v) => (
+                              <option key={v} value={v}>
+                                {v}
+                              </option>
+                            ))}
                           </select>
                           {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
                         </div>
                       );
                     }
                     if (opt.type === "array[string]") {
-                      const val = Array.isArray(form[key]) ? form[key].join(",") : form[key] || "";
+                      const val = Array.isArray(form[key])
+                        ? form[key].join(",")
+                        : form[key] || "";
                       return (
                         <div key={key} className="flex flex-col">
                           <label className="text-sm text-gray-700">{opt.label}</label>
@@ -284,7 +476,16 @@ export default function OpensourceDetail() {
                             className="border rounded-lg px-3 py-2"
                             placeholder={opt.placeholder || "comma,separated,values"}
                             value={val}
-                            onChange={(e) => onChangeField(key, e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                            onChange={(e) =>
+                              onChangeField(
+                                key,
+                                e.target
+                                  .value
+                                  .split(",")
+                                  .map((s) => s.trim())
+                                  .filter(Boolean)
+                              )
+                            }
                           />
                           {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
                         </div>
@@ -304,45 +505,271 @@ export default function OpensourceDetail() {
                     );
                   })}
                 </div>
-              </div>
+              </Section>
             )}
 
+            {/* Actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <button onClick={onRunOnce} disabled={runLoading || liveRunning} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-black text-white hover:opacity-90 disabled:opacity-60">
+              <button
+                onClick={onRunOnce}
+                disabled={runLoading || liveRunning}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-black text-white hover:opacity-90 disabled:opacity-60 shadow-sm"
+              >
                 <Play className="w-4 h-4" />
                 {runLoading ? "Running..." : "Build & Run (once)"}
               </button>
 
-              <button onClick={onRunLive} disabled={liveRunning || runLoading} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-60">
+              <button
+                onClick={onRunLive}
+                disabled={liveRunning || runLoading}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 disabled:opacity-60 shadow-sm"
+              >
                 <Activity className="w-4 h-4" />
                 {liveRunning ? "Running (Live)..." : "Run (Live)"}
               </button>
 
-              <button onClick={clearLive} disabled={liveRunning} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-60">
+              <button
+                onClick={clearLive}
+                disabled={liveRunning}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 disabled:opacity-60 shadow-sm"
+              >
                 <RefreshCw className="w-4 h-4" />
                 Clear Live Log
               </button>
 
               {runRes?.command && (
-                <button onClick={copyCmd} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50">
-                  {copied ? <ClipboardCheck className="w-4 h-4" /> : <Clipboard className="w-4 h-4" />}
+                <button
+                  onClick={copyCmd}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border hover:bg-gray-50 shadow-sm"
+                >
+                  {copied ? (
+                    <ClipboardCheck className="w-4 h-4" />
+                  ) : (
+                    <Clipboard className="w-4 h-4" />
+                  )}
                   {copied ? "Copied!" : "Copy command"}
                 </button>
               )}
             </div>
 
-            {runRes && (
-              <div className="mt-4 space-y-4">
-                <div className="text-sm">
-                  <div><span className="font-medium">Exit code:</span> {runRes.rc}</div>
-                  <div><span className="font-medium">Duration:</span> {runRes.duration_ms} ms</div>
-                  <div><span className="font-medium">Run dir:</span> <code>{runRes.run_dir}</code></div>
-                  <div><span className="font-medium">Output dir:</span> <code>{runRes.output_dir}</code></div>
-                </div>
+            {/* Live Console */}
+            <LogConsole
+              title="Live Log (실시간)"
+              text={liveLog}
+              follow={followTail}
+              onFollowChange={setFollowTail}
+            />
+            {streamErr && (
+              <div className="text-xs text-red-600">{streamErr}</div>
+            )}
 
+            {/* Run Results */}
+            {runRes && (
+              <div className="space-y-4">
+                <Section
+                  title={
+                    <div className="flex items-center gap-2">
+                      <span>Run Summary</span>
+                      {runRes.rc === 0 ? (
+                        <Badge tone="green">success</Badge>
+                      ) : (
+                        <Badge tone="amber">exit {runRes.rc}</Badge>
+                      )}
+                    </div>
+                  }
+                >
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                    <div className="bg-gray-50 rounded-xl p-3 border">
+                      <div className="text-gray-600">Exit code</div>
+                      <div className="font-medium">{runRes.rc}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border">
+                      <div className="text-gray-600">Duration</div>
+                      <div className="font-medium">{runRes.duration_ms} ms</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border overflow-hidden">
+                      <div className="text-gray-600">Run dir</div>
+                      <div className="font-mono text-xs truncate">{runRes.run_dir}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border overflow-hidden">
+                      <div className="text-gray-600">Output dir</div>
+                      <div className="font-mono text-xs truncate">{runRes.output_dir}</div>
+                    </div>
+                  </div>
+
+                  {runRes.command && (
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium">Command</div>
+                        <Copyable text={runRes.command} />
+                      </div>
+                      <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto">
+                        {runRes.command}
+                      </pre>
+                    </div>
+                  )}
+                </Section>
+
+                {/* Quick Artifacts */}
+                {(artHtml || artCsv || artJson || artLog) && (
+                  <Section title="Quick Artifacts">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {artHtml && (
+                        <div className="border rounded-xl p-3 bg-gray-50">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <FileText className="w-4 h-4" /> HTML Report
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">
+                            {artHtml.path}
+                          </div>
+                          <div className="flex gap-2 mt-2">
+                            {artHtml.download_url && (
+                              <ButtonLink href={artHtml.download_url}>
+                                <ExternalLink className="w-4 h-4" /> Open
+                              </ButtonLink>
+                            )}
+                            {artHtml.download_url && (
+                              <ButtonLink href={artHtml.download_url}>
+                                <Download className="w-4 h-4" /> Download
+                              </ButtonLink>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {artCsv && (
+                        <div className="border rounded-xl p-3 bg-gray-50">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <FileSpreadsheet className="w-4 h-4" /> CSV
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">{artCsv.path}</div>
+                          <div className="flex gap-2 mt-2">
+                            {artCsv.download_url && (
+                              <ButtonLink href={artCsv.download_url}>
+                                <ExternalLink className="w-4 h-4" /> Open
+                              </ButtonLink>
+                            )}
+                            {artCsv.download_url && (
+                              <ButtonLink href={artCsv.download_url}>
+                                <Download className="w-4 h-4" /> Download
+                              </ButtonLink>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {artJson && (
+                        <div className="border rounded-xl p-3 bg-gray-50">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <FileJson className="w-4 h-4" /> JSON-OCSF
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">{artJson.path}</div>
+                          <div className="flex gap-2 mt-2">
+                            {artJson.download_url && (
+                              <ButtonLink href={artJson.download_url}>
+                                <ExternalLink className="w-4 h-4" /> Open
+                              </ButtonLink>
+                            )}
+                            {artJson.download_url && (
+                              <ButtonLink href={artJson.download_url}>
+                                <Download className="w-4 h-4" /> Download
+                              </ButtonLink>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {artLog && (
+                        <div className="border rounded-xl p-3 bg-gray-50">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Terminal className="w-4 h-4" /> log.txt
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">{artLog.path}</div>
+                          <div className="flex gap-2 mt-2">
+                            {artLog.download_url && (
+                              <ButtonLink href={artLog.download_url}>
+                                <ExternalLink className="w-4 h-4" /> Open
+                              </ButtonLink>
+                            )}
+                            {artLog.download_url && (
+                              <ButtonLink href={artLog.download_url}>
+                                <Download className="w-4 h-4" /> Download
+                              </ButtonLink>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </Section>
+                )}
+
+                {/* STDOUT / STDERR collapsibles */}
+                <Collapsible
+                  title="STDOUT"
+                  right={runRes.stdout ? <Copyable text={stripAnsi(runRes.stdout)} /> : null}
+                >
+                  <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words">
+                    {stripAnsi(runRes.stdout || "")}
+                  </pre>
+                </Collapsible>
+
+                <Collapsible
+                  title="STDERR"
+                  right={runRes.stderr ? <Copyable text={stripAnsi(runRes.stderr)} /> : null}
+                >
+                  <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words text-red-600">
+                    {stripAnsi(runRes.stderr || "")}
+                  </pre>
+                </Collapsible>
+
+                {/* Files table with download buttons */}
+                {Array.isArray(runRes.files) && runRes.files.length > 0 && (
+                  <Collapsible title="Generated files" defaultOpen>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs">
+                        <thead>
+                          <tr className="text-left">
+                            <th className="py-1 pr-4">Path</th>
+                            <th className="py-1 pr-4">Size</th>
+                            <th className="py-1 pr-4">mtime</th>
+                            <th className="py-1">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {runRes.files.map((f, idx) => (
+                            <tr key={idx} className="border-t">
+                              <td className="py-1 pr-4 max-w-[420px]">
+                                <code className="break-all">{f.path}</code>
+                              </td>
+                              <td className="py-1 pr-4">{formatBytes(f.size)}</td>
+                              <td className="py-1 pr-4">{f.mtime}</td>
+                              <td className="py-1">
+                                <div className="flex flex-wrap gap-2">
+                                  {f.download_url ? (
+                                    <ButtonLink href={f.download_url}>
+                                      <ExternalLink className="w-4 h-4" /> Open
+                                    </ButtonLink>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                  {f.download_url ? (
+                                    <ButtonLink href={f.download_url}>
+                                      <Download className="w-4 h-4" /> Download
+                                    </ButtonLink>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      파일은 서버 내부 <code>{runRes.output_dir}</code> 하위에 생성됩니다.
+                    </div>
+                  </Collapsible>
+                )}
+
+                {/* Preinstall details */}
                 {runRes.preinstall && (
-                  <div className="border rounded-lg p-3 bg-gray-50">
-                    <div className="text-sm font-medium mb-2">pip install (pre-run)</div>
+                  <Collapsible title="Pre-run installation details">
                     <div className="text-xs text-gray-700 mb-2">
                       <div>checked_before.exists: {String(runRes.preinstall.checked_before?.exists)}</div>
                       <div>installed: {String(runRes.preinstall.installed)}</div>
@@ -351,106 +778,69 @@ export default function OpensourceDetail() {
                     {runRes.preinstall.pip_log && (
                       <>
                         <div className="text-xs text-gray-500">pip cmd: <code>{runRes.preinstall.pip_log.cmd}</code></div>
-                        <pre className="text-xs mt-2 p-2 bg-white border rounded overflow-x-auto">{runRes.preinstall.pip_log.stdout}</pre>
+                        <pre className="text-xs mt-2 p-2 bg-white border rounded-xl overflow-x-auto">{runRes.preinstall.pip_log.stdout}</pre>
                         {runRes.preinstall.pip_log.stderr && (
-                          <pre className="text-xs mt-2 p-2 bg-white border rounded overflow-x-auto text-red-600">{runRes.preinstall.pip_log.stderr}</pre>
+                          <pre className="text-xs mt-2 p-2 bg-white border rounded-xl overflow-x-auto text-red-600">{runRes.preinstall.pip_log.stderr}</pre>
                         )}
                       </>
                     )}
-                  </div>
-                )}
-
-                {runRes.command && (
-                  <div className="border rounded-lg p-3 bg-gray-50">
-                    <div className="text-sm font-medium">Command</div>
-                    <pre className="text-xs mt-1 p-2 bg-white border rounded overflow-x-auto">{runRes.command}</pre>
-                  </div>
-                )}
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="border rounded-lg p-3 bg-gray-50">
-                    <div className="text-sm font-medium">STDOUT</div>
-                    <pre className="text-xs mt-1 p-2 bg-white border rounded overflow-x-auto">{runRes.stdout || ""}</pre>
-                  </div>
-                  <div className="border rounded-lg p-3 bg-gray-50">
-                    <div className="text-sm font-medium">STDERR</div>
-                    <pre className="text-xs mt-1 p-2 bg-white border rounded overflow-x-auto text-red-600">{runRes.stderr || ""}</pre>
-                  </div>
-                </div>
-
-                {Array.isArray(runRes.files) && runRes.files.length > 0 && (
-                  <div className="border rounded-lg p-3 bg-gray-50">
-                    <div className="text-sm font-medium mb-2">Generated files</div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-xs">
-                        <thead>
-                          <tr className="text-left"><th className="py-1 pr-4">Path</th><th className="py-1 pr-4">Size</th><th className="py-1">mtime</th></tr>
-                        </thead>
-                        <tbody>
-                          {runRes.files.map((f, idx) => (
-                            <tr key={idx} className="border-t">
-                              <td className="py-1 pr-4"><code>{f.path}</code></td>
-                              <td className="py-1 pr-4">{f.size}</td>
-                              <td className="py-1">{f.mtime}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-2">파일은 서버 내부 <code>{runRes.output_dir}</code> 하위에 생성됩니다.</div>
-                  </div>
+                  </Collapsible>
                 )}
               </div>
             )}
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Live Log (실시간)</span>
-                {liveRunning && <span className="text-xs text-gray-500 inline-flex items-center gap-1"><Activity className="w-3 h-3" /> streaming…</span>}
-                {!liveRunning && liveLog && <span className="text-xs text-gray-500">(stopped)</span>}
-                {streamErr && <span className="text-xs text-red-600">{streamErr}</span>}
-              </div>
-              <pre ref={logRef} className="text-xs bg-white border rounded p-2 h-80 overflow-auto whitespace-pre-wrap break-words">{liveLog}</pre>
-
-              {summary && (
-                <div className="border rounded-lg p-3 bg-gray-50">
-                  <div className="text-sm font-medium mb-2">Summary</div>
-                  <div className="text-xs text-gray-700">
-                    <div>Run dir: <code>{summary.run_dir}</code></div>
-                    <div>Output dir: <code>{summary.output_dir}</code></div>
-                    <div>Duration: {summary.duration_ms} ms</div>
+            {/* Summary from live stream footer */}
+            {summary && (
+              <Section title="Live Summary (from stream)">
+                <div className="text-xs text-gray-700 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-gray-600">Run dir</div>
+                    <div className="font-mono">{summary.run_dir}</div>
                   </div>
-                  {Array.isArray(summary.files) && summary.files.length > 0 && (
-                    <div className="overflow-x-auto mt-2">
-                      <table className="min-w-full text-xs">
-                        <thead>
-                          <tr className="text-left"><th className="py-1 pr-4">Path</th><th className="py-1 pr-4">Size</th><th className="py-1">mtime</th></tr>
-                        </thead>
-                        <tbody>
-                          {summary.files.map((f, i) => (
-                            <tr key={i} className="border-t">
-                              <td className="py-1 pr-4"><code>{f.path}</code></td>
-                              <td className="py-1 pr-4">{f.size}</td>
-                              <td className="py-1">{f.mtime}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  <div>
+                    <div className="text-gray-600">Output dir</div>
+                    <div className="font-mono">{summary.output_dir}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600">Duration</div>
+                    <div>{summary.duration_ms} ms</div>
+                  </div>
                 </div>
-              )}
-            </div>
+                {Array.isArray(summary.files) && summary.files.length > 0 && (
+                  <div className="overflow-x-auto mt-2">
+                    <table className="min-w-full text-xs">
+                      <thead>
+                        <tr className="text-left">
+                          <th className="py-1 pr-4">Path</th>
+                          <th className="py-1 pr-4">Size</th>
+                          <th className="py-1">mtime</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.files.map((f, i) => (
+                          <tr key={i} className="border-t">
+                            <td className="py-1 pr-4"><code>{f.path}</code></td>
+                            <td className="py-1 pr-4">{formatBytes(f.size)}</td>
+                            <td className="py-1">{f.mtime}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Section>
+            )}
 
             {Array.isArray(detail?.detail?.cli_examples) && detail.detail.cli_examples.length > 0 && (
-              <div className="bg-white p-5 rounded-xl shadow-sm">
-                <div className="text-base font-medium mb-2">CLI Examples</div>
+              <Section title="CLI Examples">
                 <ul className="list-disc list-inside text-sm text-gray-800 space-y-1">
                   {detail.detail.cli_examples.map((ex, i) => (
-                    <li key={i}><code className="px-1 py-0.5 rounded bg-gray-100">{ex}</code></li>
+                    <li key={i}>
+                      <code className="px-1 py-0.5 rounded bg-gray-100">{ex}</code>
+                    </li>
                   ))}
                 </ul>
-              </div>
+              </Section>
             )}
           </div>
         )}
