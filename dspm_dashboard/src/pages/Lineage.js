@@ -73,6 +73,11 @@ const Lineage = () => {
   // value: { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore }
   const [piiOverrides, setPiiOverrides] = useState({});
 
+  // 🟣 Retention 수동 오버라이드(노드별)
+  // key: node.id 또는 dataArtifact의 경우 data:<s3-uri>
+  // value: { expired: boolean, matchedIds: string[], sources: { ... }, policyName?, policyUntil? }
+  const [retentionOverrides, setRetentionOverrides] = useState({});
+
   // 선택 노드에 대한 오버라이드 키 생성
   const getOverrideKey = (nodeLike) => {
     const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
@@ -143,10 +148,19 @@ const Lineage = () => {
   // ----- 보존기간(만료) 메타/플래그 -----
   const extractRetentionMeta = (nodeLike) => {
     const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
-    const retention = n?.meta?.retention || n?.retention || {};
-    const expired = Boolean(retention?.expired);
-    const matchedIds = Array.isArray(retention?.matchedIds) ? retention.matchedIds : [];
-    return { expired, matchedIds, sources: retention?.sources || {} };
+    const overrideKey = getOverrideKey({ nodeData: n });
+    const ov = retentionOverrides[overrideKey] || null;
+
+    const base = n?.meta?.retention || n?.retention || {};
+    // 오버라이드 병합
+    const merged = ov ? { ...base, ...ov } : base;
+
+    const expired = Boolean(merged?.expired);
+    const matchedIds = Array.isArray(merged?.matchedIds) ? merged.matchedIds : [];
+    const sources = merged?.sources || {};
+    const policyName = merged?.policyName || null;
+    const policyUntil = merged?.policyUntil || null;
+    return { expired, matchedIds, sources, policyName, policyUntil };
   };
 
   const hasRetentionExpired = (nodeLike) => extractRetentionMeta(nodeLike).expired;
@@ -232,9 +246,7 @@ const Lineage = () => {
 
     if (nodeType === 'dataArtifact') {
       if (flags.pii && flags.retention) {
-        // 반반(좌: 빨강, 우: 보라)
         background = `linear-gradient(90deg, ${redBg} 50%, ${vioBg} 50%)`;
-        // 테두리는 보라색으로 통일
         border = `2px solid ${vioBd}`;
       } else if (flags.pii) {
         background = redBg;
@@ -286,6 +298,7 @@ const Lineage = () => {
   const getAllConnectedNodes = useCallback((nodeId, edges) => {
     const connected = new Set([nodeId]);
     const toVisit = [nodeId];
+    aconst = 0; // no-op keep file stable
     const visited = new Set();
 
     while (toVisit.length > 0) {
@@ -768,7 +781,7 @@ const Lineage = () => {
         return { nodes: newNodes, edges: newEdges };
       }
     },
-    [piiOverrides] // 오버라이드 변화 시 스타일 갱신
+    [piiOverrides, retentionOverrides] // 오버라이드 변화 시 스타일 갱신
   );
 
   // 데이터셋 하이라이트 (기존 로직 유지)
@@ -931,7 +944,8 @@ const Lineage = () => {
     buildPipelineGraph,
     buildDataGraph,
     buildDatasetGraph,
-    piiOverrides, // 오버라이드 반영
+    piiOverrides,          // PII 오버라이드 반영
+    retentionOverrides,    // Retention 오버라이드 반영
   ]);
 
   // 핸들러
@@ -991,14 +1005,14 @@ const Lineage = () => {
   const getDomainPipelineCount = (domainId) => {
     if (domainId === '__untagged__') {
       return pipelines.filter((p) => {
-        const hasDomainTag = p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
+        const hasDomainTag = p.matchedDomain || (p.tags && p['sagemaker:domain-arn']);
         return !hasDomainTag;
       }).length;
     }
     return pipelines.filter((p) => {
       if (p.matchedDomain) return p.matchedDomain.domainId === domainId;
-      if (p.tags && p.tags['sagemaker:domain-arn']) {
-        return p.tags['sagemaker:domain-arn'].includes(domainId);
+      if (p.tags && p['sagemaker:domain-arn']) {
+        return p['sagemaker:domain-arn'].includes(domainId);
       }
       return false;
     }).length;
@@ -1091,13 +1105,13 @@ const Lineage = () => {
                     : selectedDomain.id === '__untagged__'
                     ? pipelines.filter((p) => {
                         const hasDomainTag =
-                          p.matchedDomain || (p.tags && p.tags['sagemaker:domain-arn']);
+                          p.matchedDomain || (p.tags && p['sagemaker:domain-arn']);
                         return !hasDomainTag;
                       })
                     : pipelines.filter((p) => {
                         if (p.matchedDomain) return p.matchedDomain.domainId === selectedDomain.id;
-                        if (p.tags && p.tags['sagemaker:domain-arn']) {
-                          return p.tags['sagemaker:domain-arn'].includes(selectedDomain.id);
+                        if (p.tags && p['sagemaker:domain-arn']) {
+                          return p['sagemaker:domain-arn'].includes(selectedDomain.id);
                         }
                         return false;
                       });
@@ -1632,14 +1646,60 @@ const Lineage = () => {
                 {/* 🟣 Retention (dataArtifact 전용) */}
                 {selectedNodeData.type === 'dataArtifact' && (
                   <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-violet-600 rounded" />
-                      <h4 className="font-bold text-gray-800">Retention Status</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1 h-5 bg-violet-600 rounded" />
+                        <h4 className="font-bold text-gray-800">Retention Status</h4>
+                      </div>
+
+                      {/* 보존기간 수동 오버라이드 버튼 */}
+                      {(() => {
+                        const key = getOverrideKey({ nodeData: selectedNodeData });
+                        const override = retentionOverrides[key];
+                        return override?.expired ? (
+                          <button
+                            onClick={() =>
+                              setRetentionOverrides((prev) => {
+                                const next = { ...prev };
+                                delete next[key];
+                                return next;
+                              })
+                            }
+                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                            title="이 노드의 보존기간 강제 만료 해제"
+                          >
+                            강제 해제
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              const now = new Date();
+                              const policyUntil = new Date(now.getTime() - 24 * 3600 * 1000).toISOString(); // 어제로 만료 예시
+                              setRetentionOverrides((prev) => ({
+                                ...prev,
+                                [key]: {
+                                  expired: true,
+                                  matchedIds: ['12345', '98765'], // 샘플
+                                  sources: { manualOverride: true },
+                                  policyName: 'Manual-Override',
+                                  policyUntil,
+                                },
+                              }));
+                            }}
+                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                            title="이 노드를 보존기간 만료로 강제 표시"
+                          >
+                            강제로 만료 표시
+                          </button>
+                        );
+                      })()}
                     </div>
+
                     {(() => {
-                      const { expired, matchedIds, sources } = extractRetentionMeta({
-                        nodeData: selectedNodeData,
-                      });
+                      const { expired, matchedIds, sources, policyName, policyUntil } =
+                        extractRetentionMeta({
+                          nodeData: selectedNodeData,
+                        });
                       return (
                         <div className="space-y-3 pl-3">
                           <div className="flex items-center gap-2">
@@ -1659,6 +1719,28 @@ const Lineage = () => {
                               </span>
                             )}
                           </div>
+
+                          {(policyName || policyUntil) && (
+                            <div className="text-xs text-gray-600">
+                              {policyName && <span>Policy: <b>{policyName}</b></span>}
+                              {policyName && policyUntil && <span className="mx-1">·</span>}
+                              {policyUntil && (
+                                <span>
+                                  Until:{' '}
+                                  {new Date(policyUntil).toLocaleString('ko-KR', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: false,
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           {expired && matchedIds.length > 0 && (
                             <div>
                               <div className="text-xs text-gray-500 mb-1">Sample IDs</div>
@@ -1676,7 +1758,7 @@ const Lineage = () => {
                           )}
                           <div className="text-[11px] text-gray-500">
                             Sources: RDS Report {sources?.rdsReport ? '✔' : '✖'} · Cross-Check{' '}
-                            {sources?.crossCheckReport ? '✔' : '✖'}
+                            {sources?.crossCheckReport ? '✔' : '✖'} {sources?.manualOverride ? '· Manual ✔' : ''}
                           </div>
                         </div>
                       );
