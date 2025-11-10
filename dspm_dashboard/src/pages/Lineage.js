@@ -298,7 +298,6 @@ const Lineage = () => {
   const getAllConnectedNodes = useCallback((nodeId, edges) => {
     const connected = new Set([nodeId]);
     const toVisit = [nodeId];
-    aconst = 0; // no-op keep file stable
     const visited = new Set();
 
     while (toVisit.length > 0) {
