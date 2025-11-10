@@ -112,7 +112,7 @@ const Lineage = () => {
     return null;
   };
 
-  // PII 메타 추출: 오버라이드 > meta.pii > pii
+  // ----- PII 메타 추출/플래그 -----
   const extractPIIMeta = (nodeLike) => {
     const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
     const overrideKey = getOverrideKey({ nodeData: n });
@@ -139,6 +139,17 @@ const Lineage = () => {
   };
 
   const hasPIIFlag = (nodeLike) => extractPIIMeta(nodeLike).hasPII;
+
+  // ----- 보존기간(만료) 메타/플래그 -----
+  const extractRetentionMeta = (nodeLike) => {
+    const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
+    const retention = n?.meta?.retention || n?.retention || {};
+    const expired = Boolean(retention?.expired);
+    const matchedIds = Array.isArray(retention?.matchedIds) ? retention.matchedIds : [];
+    return { expired, matchedIds, sources: retention?.sources || {} };
+  };
+
+  const hasRetentionExpired = (nodeLike) => extractRetentionMeta(nodeLike).expired;
 
   // 스타일
   const getNodeStyle = (type, status, isSelected, isConnected, isDimmed) => {
@@ -193,25 +204,47 @@ const Lineage = () => {
     };
   };
 
+  /**
+   * 데이터 노드 스타일
+   * - 기본: 하늘색(sky)
+   * - PII만: 빨간색(red)
+   * - 보존기간만료만: 보라색(violet)
+   * - PII+보존기간만료 둘다: 반반(그라디언트)
+   */
   const getDataNodeStyle = (
     nodeType,
     isSelected,
     isConnected,
     isDimmed,
-    hasPII = false
+    flags = { pii: false, retention: false }
   ) => {
-    let border = '2px solid #0284c7';
+    const redBg = '#fee2e2'; // red-100
+    const redBd = '#ef4444'; // red-500
+    const skyBg = '#e0f2fe'; // sky-100
+    const skyBd = '#0284c7'; // sky-600
+    const vioBg = '#ede9fe'; // violet-100
+    const vioBd = '#7c3aed'; // violet-600
+
+    let border = `2px solid ${skyBd}`;
     let opacity = 1;
-    let background = '#e0f2fe';
+    let background = skyBg;
     let boxShadow = 'none';
 
     if (nodeType === 'dataArtifact') {
-      if (hasPII) {
-        background = '#fee2e2'; // red-100
-        border = '2px solid #ef4444'; // red-500
+      if (flags.pii && flags.retention) {
+        // 반반(좌: 빨강, 우: 보라)
+        background = `linear-gradient(90deg, ${redBg} 50%, ${vioBg} 50%)`;
+        // 테두리는 보라색으로 통일
+        border = `2px solid ${vioBd}`;
+      } else if (flags.pii) {
+        background = redBg;
+        border = `2px solid ${redBd}`;
+      } else if (flags.retention) {
+        background = vioBg;
+        border = `2px solid ${vioBd}`;
       } else {
-        background = '#e0f2fe'; // sky-100
-        border = '2px solid #0284c7'; // sky-600
+        background = skyBg;
+        border = `2px solid ${skyBd}`;
       }
     } else {
       background = '#f0fdf4'; // green-50
@@ -314,24 +347,26 @@ const Lineage = () => {
           const isDimmed = !connectedNodeIds.has(n.id);
           const nodeType = n.data.nodeData?.type;
 
+          if (nodeType === 'dataArtifact' || nodeType === 'processNode') {
+            const pii = hasPIIFlag(n);
+            const retention = hasRetentionExpired(n);
+            return {
+              ...n,
+              style: getDataNodeStyle(nodeType, isSelected, isConnected, isDimmed, {
+                pii,
+                retention,
+              }),
+            };
+          }
           return {
             ...n,
-            style:
-              nodeType === 'dataArtifact' || nodeType === 'processNode'
-                ? getDataNodeStyle(
-                    nodeType,
-                    isSelected,
-                    isConnected,
-                    isDimmed,
-                    hasPIIFlag(n)
-                  )
-                : getNodeStyle(
-                    n.data.nodeData?.type || n.data.nodeData?.stepType,
-                    n.data.nodeData?.run?.status,
-                    isSelected,
-                    isConnected,
-                    isDimmed
-                  ),
+            style: getNodeStyle(
+              n.data.nodeData?.type || n.data.nodeData?.stepType,
+              n.data.nodeData?.run?.status,
+              isSelected,
+              isConnected,
+              isDimmed
+            ),
           };
         })
       );
@@ -339,7 +374,6 @@ const Lineage = () => {
       setEdges((eds) =>
         eds.map((e) => {
           const isConnected = connectedEdgeIds.has(e.id);
-          // 데이터 엣지는 originalStroke에 sky/red 저장해 둠
           return {
             ...e,
             animated: false,
@@ -367,18 +401,23 @@ const Lineage = () => {
     setNodes((nds) =>
       nds.map((n) => {
         const nodeType = n.data.nodeData?.type;
+        if (nodeType === 'dataArtifact' || nodeType === 'processNode') {
+          const pii = hasPIIFlag(n);
+          const retention = hasRetentionExpired(n);
+          return {
+            ...n,
+            style: getDataNodeStyle(nodeType, false, false, false, { pii, retention }),
+          };
+        }
         return {
           ...n,
-          style:
-            nodeType === 'dataArtifact' || nodeType === 'processNode'
-              ? getDataNodeStyle(nodeType, false, false, false, hasPIIFlag(n))
-              : getNodeStyle(
-                  n.data.nodeData?.type || n.data.nodeData?.stepType,
-                  n.data.nodeData?.run?.status,
-                  false,
-                  false,
-                  false
-                ),
+          style: getNodeStyle(
+            n.data.nodeData?.type || n.data.nodeData?.stepType,
+            n.data.nodeData?.run?.status,
+            false,
+            false,
+            false
+          ),
         };
       })
     );
@@ -398,7 +437,7 @@ const Lineage = () => {
     );
   }, [setNodes, setEdges]);
 
-  // 그래프 빌더
+  // 그래프 빌더 (파이프라인 관점)
   const buildPipelineGraph = useCallback((lineageData) => {
     if (!lineageData?.graphPipeline?.nodes) return { nodes: [], edges: [] };
 
@@ -482,219 +521,255 @@ const Lineage = () => {
     return { nodes: newNodes, edges: newEdges };
   }, []);
 
-  const buildDataGraph = useCallback((lineageData) => {
-    if (!lineageData?.graphData?.nodes) return { nodes: [], edges: [] };
+  // 그래프 빌더 (데이터 관점)
+  const buildDataGraph = useCallback(
+    (lineageData) => {
+      if (!lineageData?.graphData?.nodes) return { nodes: [], edges: [] };
 
-    const graphData = lineageData.graphData;
-    const pipelineNodes = lineageData.graphPipeline?.nodes || [];
-    const stepOrder = getPipelineStepOrder();
+      const graphData = lineageData.graphData;
+      const pipelineNodes = lineageData.graphPipeline?.nodes || [];
+      const stepOrder = getPipelineStepOrder();
 
-    const newNodes = [];
-    const newEdges = [];
-    const dataNodeMap = new Map();
-    const processNodeMap = new Map();
+      const newNodes = [];
+      const newEdges = [];
+      const dataNodeMap = new Map();
+      const processNodeMap = new Map();
 
-    graphData.nodes.forEach((node) => {
-      if (node.type === 'processNode') {
-        processNodeMap.set(node.id, node);
-      } else if (node.type === 'dataArtifact') {
-        dataNodeMap.set(node.id, node);
-      }
-    });
-
-    const sortedProcessNodes = Array.from(processNodeMap.values()).sort((a, b) => {
-      const orderA = stepOrder.indexOf(a.stepId);
-      const orderB = stepOrder.indexOf(b.stepId);
-      if (orderA === -1) return 1;
-      if (orderB === -1) return -1;
-      return orderA - orderB;
-    });
-
-    sortedProcessNodes.forEach((processNode) => {
-      const status = processNode.run?.status || 'Unknown';
-
-      newNodes.push({
-        id: processNode.id,
-        type: 'default',
-        data: {
-          label: (
-            <div style={{ textAlign: 'center', width: '100%' }}>
-              <div
-                style={{
-                  fontWeight: 'bold',
-                  fontSize: '12px',
-                  marginBottom: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                }}
-              >
-                {getStatusIcon(status)}
-                <span>{processNode.label || 'Process'}</span>
-              </div>
-              <div style={{ fontSize: '10px', color: '#6b7280' }}>
-                {processNode.stepType || 'Processing'}
-              </div>
-              {processNode.run?.elapsedSec != null && processNode.run.elapsedSec > 0 && (
-                <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px' }}>
-                  {formatDuration(processNode.run.elapsedSec)}
-                </div>
-              )}
-            </div>
-          ),
-          nodeData: processNode,
-        },
-        style: getDataNodeStyle('processNode', false, false, false),
-        position: { x: 0, y: 0 },
-        draggable: false,
+      graphData.nodes.forEach((node) => {
+        if (node.type === 'processNode') {
+          processNodeMap.set(node.id, node);
+        } else if (node.type === 'dataArtifact') {
+          dataNodeMap.set(node.id, node);
+        }
       });
 
-      const pipelineNode = pipelineNodes.find((pn) => pn.id === processNode.stepId);
-      if (pipelineNode?.inputs) {
-        pipelineNode.inputs.forEach((input) => {
-          const uri = safeValue(input.uri);
-          if (
-            uri &&
-            uri !== 'N/A' &&
-            !uri.includes('Get') &&
-            !uri.includes('Std:Join') &&
-            uri.startsWith('s3://')
-          ) {
-            const dataNodeId = `data:${uri}`;
-            if (dataNodeMap.has(dataNodeId) && !newNodes.find((n) => n.id === dataNodeId)) {
-              const dataNode = dataNodeMap.get(dataNodeId);
-              const pii = hasPIIFlag({ data: { nodeData: dataNode } });
+      const sortedProcessNodes = Array.from(processNodeMap.values()).sort((a, b) => {
+        const orderA = stepOrder.indexOf(a.stepId);
+        const orderB = stepOrder.indexOf(b.stepId);
+        if (orderA === -1) return 1;
+        if (orderB === -1) return -1;
+        return orderA - orderB;
+      });
 
-              newNodes.push({
-                id: dataNodeId,
-                type: 'default',
-                data: {
-                  label: (
-                    <div style={{ textAlign: 'center', width: '100%' }}>
-                      <div
-                        style={{
-                          fontWeight: 'bold',
-                          fontSize: '11px',
-                          marginBottom: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                        }}
-                      >
-                        <Database className="w-3 h-3 text-blue-600" />
-                        <span>{input.name || 'Data'}</span>
-                        {pii && (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              padding: '2px 6px',
-                              borderRadius: 9999,
-                              background: '#fee2e2',
-                              color: '#b91c1c',
-                              border: '1px solid #fecaca',
-                              fontWeight: 700,
-                            }}
-                            title="PII detected"
-                          >
-                            PII
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '9px',
-                          color: '#6b7280',
-                          wordBreak: 'break-all',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          maxWidth: '160px',
-                          margin: '0 auto',
-                        }}
-                      >
-                        {uri.split('/').slice(-1)[0]}
-                      </div>
-                    </div>
-                  ),
-                  nodeData: dataNode,
-                },
-                style: getDataNodeStyle('dataArtifact', false, false, false, pii),
-                position: { x: 0, y: 0 },
-                draggable: false,
-              });
+      sortedProcessNodes.forEach((processNode) => {
+        const status = processNode.run?.status || 'Unknown';
 
-              newEdges.push({
-                id: `edge-data-${dataNodeId}-${processNode.id}`,
-                source: dataNodeId,
-                target: processNode.id,
-                type: 'smoothstep',
-                animated: false,
-                style: {
-                  stroke: pii ? '#ef4444' : '#0284c7',
-                  strokeWidth: 2,
-                  originalStroke: pii ? '#ef4444' : '#0284c7',
-                },
-              });
+        newNodes.push({
+          id: processNode.id,
+          type: 'default',
+          data: {
+            label: (
+              <div style={{ textAlign: 'center', width: '100%' }}>
+                <div
+                  style={{
+                    fontWeight: 'bold',
+                    fontSize: '12px',
+                    marginBottom: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {getStatusIcon(status)}
+                  <span>{processNode.label || 'Process'}</span>
+                </div>
+                <div style={{ fontSize: '10px', color: '#6b7280' }}>
+                  {processNode.stepType || 'Processing'}
+                </div>
+                {processNode.run?.elapsedSec != null && processNode.run.elapsedSec > 0 && (
+                  <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px' }}>
+                    {formatDuration(processNode.run.elapsedSec)}
+                  </div>
+                )}
+              </div>
+            ),
+            nodeData: processNode,
+          },
+          style: getDataNodeStyle('processNode', false, false, false),
+          position: { x: 0, y: 0 },
+          draggable: false,
+        });
+
+        const pipelineNode = pipelineNodes.find((pn) => pn.id === processNode.stepId);
+        if (pipelineNode?.inputs) {
+          pipelineNode.inputs.forEach((input) => {
+            const uri = safeValue(input.uri);
+            if (
+              uri &&
+              uri !== 'N/A' &&
+              !uri.includes('Get') &&
+              !uri.includes('Std:Join') &&
+              uri.startsWith('s3://')
+            ) {
+              const dataNodeId = `data:${uri}`;
+              if (dataNodeMap.has(dataNodeId) && !newNodes.find((n) => n.id === dataNodeId)) {
+                const dataNode = dataNodeMap.get(dataNodeId);
+                const pii = hasPIIFlag({ data: { nodeData: dataNode } });
+                const retention = hasRetentionExpired({ data: { nodeData: dataNode } });
+
+                newNodes.push({
+                  id: dataNodeId,
+                  type: 'default',
+                  data: {
+                    label: (
+                      <div style={{ textAlign: 'center', width: '100%' }}>
+                        <div
+                          style={{
+                            fontWeight: 'bold',
+                            fontSize: '11px',
+                            marginBottom: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Database className="w-3 h-3 text-blue-600" />
+                          <span>{input.name || 'Data'}</span>
+
+                          {/* 뱃지: PII / EXP(ired) */}
+                          {pii && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                padding: '2px 6px',
+                                borderRadius: 9999,
+                                background: '#fee2e2',
+                                color: '#b91c1c',
+                                border: '1px solid #fecaca',
+                                fontWeight: 700,
+                              }}
+                              title="PII detected"
+                            >
+                              PII
+                            </span>
+                          )}
+                          {retention && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                padding: '2px 6px',
+                                borderRadius: 9999,
+                                background: '#ede9fe',
+                                color: '#5b21b6',
+                                border: '1px solid #ddd6fe',
+                                fontWeight: 700,
+                              }}
+                              title="Retention expired"
+                            >
+                              EXP
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '9px',
+                            color: '#6b7280',
+                            wordBreak: 'break-all',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '160px',
+                            margin: '0 auto',
+                          }}
+                        >
+                          {uri.split('/').slice(-1)[0]}
+                        </div>
+                      </div>
+                    ),
+                    nodeData: dataNode,
+                  },
+                  style: getDataNodeStyle('dataArtifact', false, false, false, {
+                    pii,
+                    retention,
+                  }),
+                  position: { x: 0, y: 0 },
+                  draggable: false,
+                });
+
+                // 엣지 색상 규칙:
+                //  - PII만: 빨강
+                //  - 보존만료만: 보라
+                //  - 둘 다: 보라 + 점선 (라벨로 PII+EXP)
+                const strokeBase = pii && retention ? '#7c3aed' : retention ? '#7c3aed' : pii ? '#ef4444' : '#0284c7';
+                const dashed = pii && retention ? '6,3' : 'none';
+                const label = pii && retention ? 'PII+EXP' : retention ? 'EXP' : pii ? 'PII' : undefined;
+
+                newEdges.push({
+                  id: `edge-data-${dataNodeId}-${processNode.id}`,
+                  source: dataNodeId,
+                  target: processNode.id,
+                  type: 'smoothstep',
+                  animated: false,
+                  label,
+                  style: {
+                    stroke: strokeBase,
+                    strokeWidth: 2,
+                    strokeDasharray: dashed,
+                    originalStroke: strokeBase,
+                  },
+                });
+              }
             }
+          });
+        }
+
+        const currentIndex = sortedProcessNodes.indexOf(processNode);
+        if (currentIndex > 0) {
+          const prevProcess = sortedProcessNodes[currentIndex - 1];
+          newEdges.push({
+            id: `edge-proc-${prevProcess.id}-${processNode.id}`,
+            source: prevProcess.id,
+            target: processNode.id,
+            type: 'smoothstep',
+            animated: false,
+            style: { stroke: '#16a34a', strokeWidth: 2, originalStroke: '#16a34a' },
+          });
+        }
+      });
+
+      // 레이아웃
+      const dagreGraph = new dagre.graphlib.Graph();
+      dagreGraph.setDefaultEdgeLabel(() => ({}));
+      dagreGraph.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 150, ranker: 'network-simplex' });
+
+      const nodeW = 180;
+      const nodeH = 80;
+
+      newNodes.forEach((n) => dagreGraph.setNode(n.id, { width: nodeW, height: nodeH }));
+      newEdges.forEach((e) => dagreGraph.setEdge(e.source, e.target));
+
+      try {
+        dagre.layout(dagreGraph);
+        const layoutedNodes = newNodes.map((n) => {
+          const pos = dagreGraph.node(n.id);
+          if (!pos) {
+            return {
+              ...n,
+              sourcePosition: Position.Right,
+              targetPosition: Position.Left,
+              position: { x: 0, y: 0 },
+            };
           }
-        });
-      }
-
-      const currentIndex = sortedProcessNodes.indexOf(processNode);
-      if (currentIndex > 0) {
-        const prevProcess = sortedProcessNodes[currentIndex - 1];
-        newEdges.push({
-          id: `edge-proc-${prevProcess.id}-${processNode.id}`,
-          source: prevProcess.id,
-          target: processNode.id,
-          type: 'smoothstep',
-          animated: false,
-          style: { stroke: '#16a34a', strokeWidth: 2, originalStroke: '#16a34a' },
-        });
-      }
-    });
-
-    // 레이아웃
-    const dagreGraph = new dagre.graphlib.Graph();
-    dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 150, ranker: 'network-simplex' });
-
-    const nodeW = 180;
-    const nodeH = 80;
-
-    newNodes.forEach((n) => dagreGraph.setNode(n.id, { width: nodeW, height: nodeH }));
-    newEdges.forEach((e) => dagreGraph.setEdge(e.source, e.target));
-
-    try {
-      dagre.layout(dagreGraph);
-      const layoutedNodes = newNodes.map((n) => {
-        const pos = dagreGraph.node(n.id);
-        if (!pos) {
           return {
             ...n,
             sourcePosition: Position.Right,
             targetPosition: Position.Left,
-            position: { x: 0, y: 0 },
+            position: {
+              x: pos.x - nodeW / 2,
+              y: pos.y - nodeH / 2,
+            },
           };
-        }
-        return {
-          ...n,
-          sourcePosition: Position.Right,
-          targetPosition: Position.Left,
-          position: {
-            x: pos.x - nodeW / 2,
-            y: pos.y - nodeH / 2,
-          },
-        };
-      });
-      return { nodes: layoutedNodes, edges: newEdges };
-    } catch (e) {
-      console.error('Dagre layout error:', e);
-      return { nodes: newNodes, edges: newEdges };
-    }
-  }, [piiOverrides]); // 오버라이드 변화 시 스타일 갱신
+        });
+        return { nodes: layoutedNodes, edges: newEdges };
+      } catch (e) {
+        console.error('Dagre layout error:', e);
+        return { nodes: newNodes, edges: newEdges };
+      }
+    },
+    [piiOverrides] // 오버라이드 변화 시 스타일 갱신
+  );
 
   // 데이터셋 하이라이트 (기존 로직 유지)
   const buildDatasetGraph = useCallback(
@@ -1548,6 +1623,61 @@ const Lineage = () => {
                               스캔 결과 PII 항목이 발견되지 않았습니다.
                             </div>
                           )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* 🟣 Retention (dataArtifact 전용) */}
+                {selectedNodeData.type === 'dataArtifact' && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-1 h-5 bg-violet-600 rounded" />
+                      <h4 className="font-bold text-gray-800">Retention Status</h4>
+                    </div>
+                    {(() => {
+                      const { expired, matchedIds, sources } = extractRetentionMeta({
+                        nodeData: selectedNodeData,
+                      });
+                      return (
+                        <div className="space-y-3 pl-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Expired</span>
+                            <span
+                              className={`px-2 py-0.5 text-xs rounded-full border ${
+                                expired
+                                  ? 'bg-violet-50 text-violet-700 border-violet-200'
+                                  : 'bg-green-50 text-green-700 border-green-200'
+                              }`}
+                            >
+                              {expired ? 'Yes' : 'No'}
+                            </span>
+                            {expired && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                Matched IDs: <span className="font-semibold">{matchedIds.length}</span>
+                              </span>
+                            )}
+                          </div>
+                          {expired && matchedIds.length > 0 && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Sample IDs</div>
+                              <ul className="space-y-1">
+                                {matchedIds.slice(0, 5).map((v, i) => (
+                                  <li
+                                    key={`mid-${i}`}
+                                    className="font-mono text-xs break-all bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                                  >
+                                    {v}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <div className="text-[11px] text-gray-500">
+                            Sources: RDS Report {sources?.rdsReport ? '✔' : '✖'} · Cross-Check{' '}
+                            {sources?.crossCheckReport ? '✔' : '✖'}
+                          </div>
                         </div>
                       );
                     })()}
