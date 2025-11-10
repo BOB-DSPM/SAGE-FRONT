@@ -1,7 +1,7 @@
-// ==============================
-// src/pages/OpensourceDetail.js
-// (Run 버튼 포함 상세 페이지)
-// ==============================
+// ============================================================================
+// file: src/pages/OpensourceDetail.js
+// (Run 버튼 + 줄바꿈/ANSI 처리 개선 버전)
+// ============================================================================
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
@@ -45,6 +45,11 @@ function validateRequired(detail, form) {
 
 function stripAnsi(s = "") {
   return s.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, "");
+}
+
+function normalizeNewlines(s = "") {
+  // \r\n, \r → \n 통일
+  return s.replace(/\r\n?/g, "\n");
 }
 
 function formatBytes(bytes) {
@@ -180,13 +185,14 @@ function LogConsole({ title, text, height = 360, follow = true, onFollowChange }
         </label>
       }
     >
-      <div
+      {/* 줄바꿈 보존 + 긴 줄 자동 줄바꿈 */}
+      <pre
         ref={viewRef}
-        className="bg-black text-gray-100 rounded-xl p-3 font-mono text-[11px] leading-5 overflow-auto"
+        className="bg-black text-gray-100 rounded-xl p-3 font-mono text-[11px] leading-5 overflow-auto whitespace-pre-wrap break-words"
         style={{ height }}
       >
-        {stripAnsi(text || "")}
-      </div>
+        {normalizeNewlines(stripAnsi(text || ""))}
+      </pre>
     </Section>
   );
 }
@@ -731,13 +737,13 @@ export default function OpensourceDetail() {
                 {/* STDOUT / STDERR */}
                 <Collapsible title="STDOUT" right={runRes.stdout ? <Copyable text={stripAnsi(runRes.stdout)} /> : null}>
                   <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words">
-                    {stripAnsi(runRes.stdout || "")}
+                    {normalizeNewlines(stripAnsi(runRes.stdout || ""))}
                   </pre>
                 </Collapsible>
 
                 <Collapsible title="STDERR" right={runRes.stderr ? <Copyable text={stripAnsi(runRes.stderr)} /> : null}>
                   <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words text-red-600">
-                    {stripAnsi(runRes.stderr || "")}
+                    {normalizeNewlines(stripAnsi(runRes.stderr || ""))}
                   </pre>
                 </Collapsible>
 

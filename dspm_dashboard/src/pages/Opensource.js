@@ -1,9 +1,9 @@
-// ==============================
-// src/pages/Opensource.jsx
-// (목록/검색 페이지; 카드 클릭 시 상세 경로로 이동)
-// ==============================
+// ============================================================================
+// file: src/pages/Opensource.jsx
+// (목록/검색 → 카드 클릭 시 상세로 이동)
+// ============================================================================
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Github } from "lucide-react";
 import { listCatalog } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
@@ -133,4 +133,4 @@ export default function Opensource() {
       </div>
     </div>
   );
-}
+};
