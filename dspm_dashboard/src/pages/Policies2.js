@@ -905,9 +905,6 @@ const Policies2 = () => {
                       <div className="font-medium text-gray-900 mb-1">
                         {item.item_code || item.title || `항목 ${idx + 1}`}
                       </div>
-                      {item.title && item.title !== item.item_code && (
-                        <div className="text-sm text-gray-700">{item.title}</div>
-                      )}
                       {item.regulation && (
                         <div className="text-xs text-gray-600 mt-1">{item.regulation}</div>
                       )}
