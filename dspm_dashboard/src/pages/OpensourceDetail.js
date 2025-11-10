@@ -1,3 +1,4 @@
+// src/pages/OpensourceDetail.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
@@ -16,6 +17,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Info,
 } from "lucide-react";
 import { getDetail, runTool } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
@@ -42,26 +44,40 @@ function validateRequired(detail, form) {
 }
 
 function stripAnsi(s = "") {
-  return s.replace(
-    /\u001b\[[0-9;]*[a-zA-Z]/g,
-    ""
-  );
+  return s.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, "");
 }
 
 function formatBytes(bytes) {
   if (bytes === 0 || bytes === undefined || bytes === null) return "-";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+function formatDate(ts) {
+  if (!ts) return "-";
+  try {
+    const d = new Date(ts * 1000);
+    return d.toLocaleString();
+  } catch {
+    return String(ts);
+  }
 }
 
 function clsx(...parts) {
   return parts.filter(Boolean).join(" ");
 }
 
-// ──────────────────────────────────────────────────────────────
-// Reusable UI pieces
+// 가장 최신 mtime(초) 추출
+function maxMtime(files = []) {
+  let m = 0;
+  for (const f of files) {
+    if (typeof f.mtime === "number") m = Math.max(m, f.mtime);
+  }
+  return m || null;
+}
+
 // ──────────────────────────────────────────────────────────────
 function Section({ title, children, right }) {
   return (
@@ -83,9 +99,7 @@ function Badge({ children, tone = "gray" }) {
     blue: "bg-blue-100 text-blue-700",
     amber: "bg-amber-100 text-amber-700",
   };
-  return (
-    <span className={clsx("text-xs px-2 py-1 rounded-full", toneMap[tone])}>{children}</span>
-  );
+  return <span className={clsx("text-xs px-2 py-1 rounded-full", toneMap[tone])}>{children}</span>;
 }
 
 function Collapsible({ title, children, defaultOpen = false, right }) {
@@ -131,10 +145,7 @@ function Copyable({ text }) {
     } catch {}
   };
   return (
-    <button
-      onClick={onCopy}
-      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-gray-50"
-    >
+    <button onClick={onCopy} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-gray-50">
       {copied ? <ClipboardCheck className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
       {copied ? "Copied" : "Copy"}
     </button>
@@ -182,14 +193,17 @@ function LogConsole({ title, text, height = 360, follow = true, onFollowChange }
 }
 
 // ──────────────────────────────────────────────────────────────
-// Main component
+// Main
 // ──────────────────────────────────────────────────────────────
 export default function OpensourceDetail() {
   const { code } = useParams();
+
+  // detail
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // form
   const [form, setForm] = useState({
     provider: "aws",
     pip_install: "true",
@@ -198,15 +212,21 @@ export default function OpensourceDetail() {
     directory: getDefaultDir(),
   });
 
+  // run result
   const [runLoading, setRunLoading] = useState(false);
   const [runRes, setRunRes] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // live
   const [liveRunning, setLiveRunning] = useState(false);
   const [liveLog, setLiveLog] = useState("");
   const [summary, setSummary] = useState(null);
   const [streamErr, setStreamErr] = useState("");
   const [followTail, setFollowTail] = useState(true);
+
+  // latest flag
+  const [fromLatest, setFromLatest] = useState(false);
+  const [latestTime, setLatestTime] = useState(null); // seconds epoch
 
   const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
   const iconSrc = iconMap[code];
@@ -215,6 +235,7 @@ export default function OpensourceDetail() {
     if (form?.directory) localStorage.setItem("oss.directory", form.directory);
   }, [form?.directory]);
 
+  // 1) 페이지 진입 시 상세 로드
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -222,6 +243,8 @@ export default function OpensourceDetail() {
       setRunRes(null);
       setLiveLog("");
       setSummary(null);
+      setFromLatest(false);
+      setLatestTime(null);
       try {
         const d = await getDetail(code);
         setDetail(d);
@@ -257,12 +280,44 @@ export default function OpensourceDetail() {
     })();
   }, [code]);
 
+  // 2) 상세 로드가 끝나면 "최근 실행 결과" 자동 조회
+  useEffect(() => {
+    if (!detail) return;
+    (async () => {
+      try {
+        const url = `${API_BASE}/api/oss/${encodeURIComponent(code)}/runs/latest`;
+        const res = await fetch(url, { method: "GET" });
+        if (res.status === 404) {
+          // 최근 실행 없음 -> 조용히 무시
+          return;
+        }
+        if (!res.ok) {
+          // 다른 에러는 표시
+          const txt = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
+        }
+        const latest = await res.json();
+        setRunRes(latest);
+        setFromLatest(true);
+        setLatestTime(maxMtime(latest.files));
+      } catch (e) {
+        // 최근 실행 조회 실패는 치명적이지 않으니 토스트/메시지 없이 지나감
+        // 필요 시 아래 주석 해제
+        // setError(String(e));
+      }
+    })();
+  }, [detail, code]);
+
   const onChangeField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
+  // 3) 실행 (동기)
   const onRunOnce = async () => {
     setRunRes(null);
+    setFromLatest(false);
+    setLatestTime(null);
     setCopied(false);
     setError("");
+
     if (!form.directory || String(form.directory).trim().length === 0) {
       setError('Invalid options: "directory" is required');
       return;
@@ -276,6 +331,7 @@ export default function OpensourceDetail() {
     try {
       const res = await runTool(code, form);
       setRunRes(res);
+      setLatestTime(maxMtime(res.files));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -293,7 +349,10 @@ export default function OpensourceDetail() {
     } catch {}
   };
 
+  // 4) 실행 (실시간)
   const onRunLive = async () => {
+    setFromLatest(false);
+    setLatestTime(null);
     setLiveRunning(true);
     setLiveLog("");
     setStreamErr("");
@@ -368,12 +427,10 @@ export default function OpensourceDetail() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Link
-              to="/overview"
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100"
-            >
+            <Link to="/overview" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100">
               <ArrowLeft className="w-4 h-4" />
               Dashboard
             </Link>
@@ -402,15 +459,11 @@ export default function OpensourceDetail() {
                 {Array.isArray(detail.tags) && detail.tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {detail.tags.map((t) => (
-                      <span key={t} className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
-                        #{t}
-                      </span>
+                      <span key={t} className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">#{t}</span>
                     ))}
                   </div>
                 )}
-                {detail.license && (
-                  <div className="text-xs text-gray-500 mt-2">License: {detail.license}</div>
-                )}
+                {detail.license && <div className="text-xs text-gray-500 mt-2">License: {detail.license}</div>}
               </div>
             </div>
 
@@ -418,6 +471,35 @@ export default function OpensourceDetail() {
               <Section title="About">
                 <p className="text-sm text-gray-700">{detail.detail.about}</p>
               </Section>
+            )}
+
+            {/* 최근 실행 자동 로드 알림/CTA */}
+            {fromLatest ? (
+              <div className="flex items-center gap-3 p-3 rounded-xl border bg-blue-50 text-blue-800">
+                <Info className="w-4 h-4" />
+                <div className="text-sm">
+                  최근 실행 결과를 불러왔습니다{latestTime ? ` (기준: ${formatDate(latestTime)})` : ""}.
+                </div>
+                <div className="ml-auto">
+                  <button
+                    onClick={onRunOnce}
+                    disabled={runLoading || liveRunning}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white hover:opacity-90 disabled:opacity-60"
+                  >
+                    <Play className="w-4 h-4" />
+                    다시 실행
+                  </button>
+                </div>
+              </div>
+            ) : (
+              !runRes && (
+                <div className="flex items-start gap-3 p-4 rounded-xl border bg-amber-50 text-amber-900">
+                  <Info className="w-4 h-4 mt-0.5" />
+                  <div className="text-sm">
+                    최근 실행 결과가 없습니다. 아래 옵션을 확인한 뒤 실행해 보세요.
+                  </div>
+                </div>
+              )
             )}
 
             {/* Working dir + Options */}
@@ -428,12 +510,10 @@ export default function OpensourceDetail() {
                 value={form.directory || ""}
                 onChange={(e) => onChangeField("directory", e.target.value)}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                * 일부 도구는 <code>directory</code>가 필수입니다.
-              </p>
+              <p className="text-xs text-gray-500 mt-1">* 일부 도구는 <code>directory</code>가 필수입니다.</p>
             </Section>
 
-            {hasOptions && (
+            {Array.isArray(detail?.detail?.options) && detail.detail.options.length > 0 && (
               <Section title="Options">
                 <div className="grid md:grid-cols-2 gap-4">
                   {detail.detail.options.map((opt) => {
@@ -452,23 +532,15 @@ export default function OpensourceDetail() {
                             value={form[key] ?? opt.default ?? ""}
                             onChange={(e) => onChangeField(key, e.target.value)}
                           >
-                            <option value="" disabled>
-                              선택…
-                            </option>
-                            {opt.values?.map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
-                            ))}
+                            <option value="" disabled>선택…</option>
+                            {opt.values?.map((v) => (<option key={v} value={v}>{v}</option>))}
                           </select>
                           {opt.help && <p className="text-xs text-gray-500 mt-1">{opt.help}</p>}
                         </div>
                       );
                     }
                     if (opt.type === "array[string]") {
-                      const val = Array.isArray(form[key])
-                        ? form[key].join(",")
-                        : form[key] || "";
+                      const val = Array.isArray(form[key]) ? form[key].join(",") : form[key] || "";
                       return (
                         <div key={key} className="flex flex-col">
                           <label className="text-sm text-gray-700">{opt.label}</label>
@@ -479,11 +551,7 @@ export default function OpensourceDetail() {
                             onChange={(e) =>
                               onChangeField(
                                 key,
-                                e.target
-                                  .value
-                                  .split(",")
-                                  .map((s) => s.trim())
-                                  .filter(Boolean)
+                                e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
                               )
                             }
                           />
@@ -539,29 +607,20 @@ export default function OpensourceDetail() {
 
               {runRes?.command && (
                 <button
-                  onClick={copyCmd}
+                  onClick={async () => {
+                    await copyCmd();
+                  }}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border hover:bg-gray-50 shadow-sm"
                 >
-                  {copied ? (
-                    <ClipboardCheck className="w-4 h-4" />
-                  ) : (
-                    <Clipboard className="w-4 h-4" />
-                  )}
+                  {copied ? <ClipboardCheck className="w-4 h-4" /> : <Clipboard className="w-4 h-4" />}
                   {copied ? "Copied!" : "Copy command"}
                 </button>
               )}
             </div>
 
             {/* Live Console */}
-            <LogConsole
-              title="Live Log (실시간)"
-              text={liveLog}
-              follow={followTail}
-              onFollowChange={setFollowTail}
-            />
-            {streamErr && (
-              <div className="text-xs text-red-600">{streamErr}</div>
-            )}
+            <LogConsole title="Live Log (실시간)" text={liveLog} follow={followTail} onFollowChange={setFollowTail} />
+            {streamErr && <div className="text-xs text-red-600">{streamErr}</div>}
 
             {/* Run Results */}
             {runRes && (
@@ -570,22 +629,21 @@ export default function OpensourceDetail() {
                   title={
                     <div className="flex items-center gap-2">
                       <span>Run Summary</span>
-                      {runRes.rc === 0 ? (
-                        <Badge tone="green">success</Badge>
-                      ) : (
-                        <Badge tone="amber">exit {runRes.rc}</Badge>
-                      )}
+                      {runRes.rc === 0 || runRes.rc === null
+                        ? <Badge tone="green">ok</Badge>
+                        : <Badge tone="amber">exit {runRes.rc}</Badge>}
+                      {fromLatest && <Badge tone="blue">latest</Badge>}
                     </div>
                   }
                 >
                   <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                     <div className="bg-gray-50 rounded-xl p-3 border">
                       <div className="text-gray-600">Exit code</div>
-                      <div className="font-medium">{runRes.rc}</div>
+                      <div className="font-medium">{runRes.rc ?? "-"}</div>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3 border">
                       <div className="text-gray-600">Duration</div>
-                      <div className="font-medium">{runRes.duration_ms} ms</div>
+                      <div className="font-medium">{runRes.duration_ms ?? "-"} ms</div>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3 border overflow-hidden">
                       <div className="text-gray-600">Run dir</div>
@@ -596,6 +654,12 @@ export default function OpensourceDetail() {
                       <div className="font-mono text-xs truncate">{runRes.output_dir}</div>
                     </div>
                   </div>
+
+                  {latestTime && (
+                    <div className="mt-3 text-xs text-gray-600">
+                      기준시각: <span className="font-mono">{formatDate(latestTime)}</span>
+                    </div>
+                  )}
 
                   {runRes.command && (
                     <div className="mt-4">
@@ -619,9 +683,7 @@ export default function OpensourceDetail() {
                           <div className="flex items-center gap-2 text-sm font-medium">
                             <FileText className="w-4 h-4" /> HTML Report
                           </div>
-                          <div className="text-xs text-gray-600 mt-1 break-all">
-                            {artHtml.path}
-                          </div>
+                          <div className="text-xs text-gray-600 mt-1 break-all">{artHtml.path}</div>
                           <div className="flex gap-2 mt-2">
                             {artHtml.download_url && (
                               <ButtonLink href={artHtml.download_url}>
@@ -700,26 +762,20 @@ export default function OpensourceDetail() {
                   </Section>
                 )}
 
-                {/* STDOUT / STDERR collapsibles */}
-                <Collapsible
-                  title="STDOUT"
-                  right={runRes.stdout ? <Copyable text={stripAnsi(runRes.stdout)} /> : null}
-                >
+                {/* STDOUT / STDERR */}
+                <Collapsible title="STDOUT" right={runRes.stdout ? <Copyable text={stripAnsi(runRes.stdout)} /> : null}>
                   <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words">
                     {stripAnsi(runRes.stdout || "")}
                   </pre>
                 </Collapsible>
 
-                <Collapsible
-                  title="STDERR"
-                  right={runRes.stderr ? <Copyable text={stripAnsi(runRes.stderr)} /> : null}
-                >
+                <Collapsible title="STDERR" right={runRes.stderr ? <Copyable text={stripAnsi(runRes.stderr)} /> : null}>
                   <pre className="text-xs mt-1 p-2 bg-white border rounded-xl overflow-x-auto whitespace-pre-wrap break-words text-red-600">
                     {stripAnsi(runRes.stderr || "")}
                   </pre>
                 </Collapsible>
 
-                {/* Files table with download buttons */}
+                {/* Files table */}
                 {Array.isArray(runRes.files) && runRes.files.length > 0 && (
                   <Collapsible title="Generated files" defaultOpen>
                     <div className="overflow-x-auto">
@@ -739,7 +795,7 @@ export default function OpensourceDetail() {
                                 <code className="break-all">{f.path}</code>
                               </td>
                               <td className="py-1 pr-4">{formatBytes(f.size)}</td>
-                              <td className="py-1 pr-4">{f.mtime}</td>
+                              <td className="py-1 pr-4">{formatDate(f.mtime)}</td>
                               <td className="py-1">
                                 <div className="flex flex-wrap gap-2">
                                   {f.download_url ? (
@@ -777,10 +833,16 @@ export default function OpensourceDetail() {
                     </div>
                     {runRes.preinstall.pip_log && (
                       <>
-                        <div className="text-xs text-gray-500">pip cmd: <code>{runRes.preinstall.pip_log.cmd}</code></div>
-                        <pre className="text-xs mt-2 p-2 bg-white border rounded-xl overflow-x-auto">{runRes.preinstall.pip_log.stdout}</pre>
+                        <div className="text-xs text-gray-500">
+                          pip cmd: <code>{runRes.preinstall.pip_log.cmd}</code>
+                        </div>
+                        <pre className="text-xs mt-2 p-2 bg-white border rounded-xl overflow-x-auto">
+                          {runRes.preinstall.pip_log.stdout}
+                        </pre>
                         {runRes.preinstall.pip_log.stderr && (
-                          <pre className="text-xs mt-2 p-2 bg-white border rounded-xl overflow-x-auto text-red-600">{runRes.preinstall.pip_log.stderr}</pre>
+                          <pre className="text-xs mt-2 p-2 bg-white border rounded-xl overflow-x-auto text-red-600">
+                            {runRes.preinstall.pip_log.stderr}
+                          </pre>
                         )}
                       </>
                     )}
@@ -789,7 +851,7 @@ export default function OpensourceDetail() {
               </div>
             )}
 
-            {/* Summary from live stream footer */}
+            {/* Summary from live stream */}
             {summary && (
               <Section title="Live Summary (from stream)">
                 <div className="text-xs text-gray-700 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -821,7 +883,7 @@ export default function OpensourceDetail() {
                           <tr key={i} className="border-t">
                             <td className="py-1 pr-4"><code>{f.path}</code></td>
                             <td className="py-1 pr-4">{formatBytes(f.size)}</td>
-                            <td className="py-1">{f.mtime}</td>
+                            <td className="py-1">{formatDate(f.mtime)}</td>
                           </tr>
                         ))}
                       </tbody>
