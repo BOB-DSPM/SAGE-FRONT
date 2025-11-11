@@ -100,7 +100,7 @@ const AegisResults = () => {
     if (retentionViolations && retentionViolations.count > 0) {
       setShowRetentionModal(true);
     } else {
-      alert('선택한 버킷에서 보유기간이 만료된 데이터가 없습니다.');
+      alert('선택한 버킷에서 보존기간이 만료된 데이터가 없습니다.');
     }
   };
 
@@ -412,7 +412,7 @@ const AegisResults = () => {
             >
               <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
                 <Clock className="w-4 h-4 text-purple-600" />
-                <span>보유기간 만료</span>
+                <span>보존기간 만료</span>
               </div>
               <div className={`text-3xl font-bold ${retentionViolations.count > 0 ? 'text-red-900' : 'text-gray-900'}`}>
                 {retentionViolations.count}
@@ -773,7 +773,7 @@ const AegisResults = () => {
           >
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">보유기간 만료 데이터</h3>
+                <h3 className="text-xl font-bold text-gray-900">보존기간 만료 데이터</h3>
                 <p className="text-sm text-gray-600 mt-1">
                   선택한 S3 버킷에서 보존기간이 만료된 데이터가 남아있는 것을 발견했습니다.
                 </p>
