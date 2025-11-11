@@ -1,11 +1,19 @@
 // src/pages/ThreatCompliance.js
-// 세션 ID를 항상 API에 전달하도록 수정 (streaming 포함)
-import React, { useState, useEffect } from 'react';
+// (하단 페이지네이션 영역에 10/20/50/전체 버튼 추가, select 제거, localStorage 유지)
+import React, { useState, useEffect, useMemo } from 'react';
 import { ClipboardList, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { sessionService } from '../services/sessionService';
 import { complianceApi } from '../services/complianceApi';
 
 const API_BASE = 'http://43.202.228.52:8003';
+const LS_PAGE_SIZE_KEY = 'threat.itemsPerPage';
+
+const PAGE_SIZE_OPTIONS = [
+  { label: '10', value: '10' },
+  { label: '20', value: '20' },
+  { label: '50', value: '50' },
+  { label: '전체', value: 'all' },
+];
 
 const ThreatCompliance = () => {
   const [frameworks, setFrameworks] = useState([]);
@@ -21,8 +29,14 @@ const ThreatCompliance = () => {
   const [streaming, setStreaming] = useState(false);
   const [progress, setProgress] = useState({ total: 0, executed: 0 });
   const [expandedText, setExpandedText] = useState(null);
+
+  // ── 페이지네이션 상태 ───────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    const saved = typeof window !== 'undefined' ? window.localStorage.getItem(LS_PAGE_SIZE_KEY) : null;
+    return saved && ['10', '20', '50', 'all'].includes(saved) ? saved : '10'; // 문자열로 관리
+  });
+
   const [selectedThreatGroup, setSelectedThreatGroup] = useState('전체');
   const [threatGroups, setThreatGroups] = useState([]);
 
@@ -209,9 +223,50 @@ const ThreatCompliance = () => {
   };
 
   const safeRequirements = Array.isArray(requirements) ? requirements : [];
-  const filteredRequirements = selectedThreatGroup === '전체'
-    ? safeRequirements
-    : safeRequirements.filter((req) => req.threat_groups && req.threat_groups.includes(selectedThreatGroup));
+  const filteredRequirements = useMemo(() => {
+    const arr = selectedThreatGroup === '전체'
+      ? safeRequirements
+      : safeRequirements.filter((req) => req.threat_groups && req.threat_groups.includes(selectedThreatGroup));
+    return arr;
+  }, [safeRequirements, selectedThreatGroup]);
+
+  // ── 페이지 크기 숫자/effective 계산 ───────────────────────────────────────────
+  const effectivePageSize = useMemo(() => {
+    if (itemsPerPage === 'all') return filteredRequirements.length || 1;
+    const n = parseInt(itemsPerPage, 10);
+    return Number.isFinite(n) && n > 0 ? n : 10;
+  }, [itemsPerPage, filteredRequirements.length]);
+
+  const totalPages = useMemo(() => {
+    if (filteredRequirements.length === 0) return 1;
+    if (itemsPerPage === 'all') return 1;
+    return Math.max(1, Math.ceil(filteredRequirements.length / effectivePageSize));
+  }, [filteredRequirements.length, itemsPerPage, effectivePageSize]);
+
+  // 페이지 크기 변경 시 초기화 + 저장
+  useEffect(() => {
+    setCurrentPage(1);
+    try { window.localStorage.setItem(LS_PAGE_SIZE_KEY, itemsPerPage); } catch {}
+  }, [itemsPerPage]);
+
+  // 그룹/데이터 변동 시 현재 페이지 보정
+  useEffect(() => {
+    setCurrentPage((p) => {
+      const maxP = totalPages;
+      return Math.min(Math.max(1, p), maxP);
+    });
+  }, [totalPages]);
+
+  // 현재 페이지의 표시 데이터
+  const displayedRequirements = useMemo(() => {
+    if (itemsPerPage === 'all') return filteredRequirements;
+    const start = (currentPage - 1) * effectivePageSize;
+    const end = start + effectivePageSize;
+    return filteredRequirements.slice(start, end);
+  }, [filteredRequirements, itemsPerPage, currentPage, effectivePageSize]);
+
+  const rangeStart = filteredRequirements.length === 0 ? 0 : (itemsPerPage === 'all' ? 1 : (currentPage - 1) * effectivePageSize + 1);
+  const rangeEnd = itemsPerPage === 'all' ? filteredRequirements.length : Math.min(currentPage * effectivePageSize, filteredRequirements.length);
 
   return (
     <div className="relative">
@@ -256,7 +311,10 @@ const ThreatCompliance = () => {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">{selectedFramework} Requirements</h2>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">{filteredRequirements.length} 항목</span>
+                <span className="text-sm text-gray-500">
+                  {filteredRequirements.length} 항목 · {rangeStart}-{rangeEnd} 표시
+                </span>
+
                 <div className="flex items-center gap-3">
                   {streaming && <span className="text-xs text-gray-500">진행 {progress.executed}/{progress.total}</span>}
                   <button
@@ -269,26 +327,26 @@ const ThreatCompliance = () => {
                   </button>
                 </div>
               </div>
-            </div>
 
-            {/* 위협 그룹 필터 */}
-            <div className="flex flex-wrap gap-4">
-              {threatGroups.map((group) => (
-                <button
-                  key={group}
-                  onClick={() => { setSelectedThreatGroup(group); setCurrentPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedThreatGroup === group ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {group}
-                  {group !== '전체' && (
-                    <span className="ml-2 text-xs opacity-75">
-                      ({safeRequirements.filter((req) => req.threat_groups && req.threat_groups.includes(group)).length})
-                    </span>
-                  )}
-                </button>
-              ))}
+              {/* 위협 그룹 필터 */}
+              <div className="flex flex-wrap gap-4 mt-2">
+                {threatGroups.map((group) => (
+                  <button
+                    key={group}
+                    onClick={() => { setSelectedThreatGroup(group); setCurrentPage(1); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      selectedThreatGroup === group ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {group}
+                    {group !== '전체' && (
+                      <span className="ml-2 text-xs opacity-75">
+                        ({safeRequirements.filter((req) => req.threat_groups && req.threat_groups.includes(group)).length})
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -309,245 +367,277 @@ const ThreatCompliance = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {filteredRequirements
-                      .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-                      .map((req, index) => (
-                        <React.Fragment key={req.id}>
-                          <tr className="hover:bg-gray-50 border-b border-gray-200">
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900" style={{ width: '40px' }}>
-                              {req.audit_result && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); toggleExpand(`req-${req.id}`); }}
-                                  className="text-gray-400 hover:text-gray-600"
-                                >
-                                  {expandedItems[`req-${req.id}`] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                </button>
-                              )}
-                            </td>
-                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 text-center font-medium" style={{ width: '60px' }}>
-                              {(currentPage - 1) * itemsPerPage + index + 1}
-                            </td>
-                            <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
-                            <td className="px-6 py-2 text-sm text-gray-900" style={{ width: '200px' }}>
-                              <span
-                                className="line-clamp-2 block cursor-pointer hover:text-primary-600 transition-colors"
-                                onClick={() =>
-                                  setExpandedText({
-                                    title: '보안 위협 상세',
-                                    threatData: {
-                                      threat: req.item_code,
-                                      details: req.regulation || req.title,
-                                      services: req.mapping_services || [],
-                                    },
-                                  })
-                                }
+                    {displayedRequirements.map((req, index) => (
+                      <React.Fragment key={req.id}>
+                        <tr className="hover:bg-gray-50 border-b border-gray-200">
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900" style={{ width: '40px' }}>
+                            {req.audit_result && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleExpand(`req-${req.id}`); }}
+                                className="text-gray-400 hover:text-gray-600"
                               >
-                                {req.item_code || '-'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '350px' }}>
-                              <span
-                                className="line-clamp-3 block cursor-pointer hover:text-primary-600 transition-colors"
-                                onClick={() => setExpandedText({ title: '세부 사항', content: req.regulation || req.title })}
-                              >
-                                {req.regulation || req.title || '-'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap" style={{ width: '100px' }}>
-                              {getMappingStatusBadge(req.mapping_status)}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-700" style={{ width: '200px' }}>
-                              <div
-                                className="line-clamp-2 cursor-pointer hover:text-primary-600"
-                                onClick={() => {
-                                  const complianceData =
-                                    req.applicable_hits?.map((hit) => ({
-                                      frameworks:
-                                        hit.matches?.map((m) => ({
-                                          code: m.framework_code?.toUpperCase(),
-                                          itemCode: m.item_code,
-                                          title: m.title,
-                                          regulation: m.regulation,
-                                        })) || [],
-                                    })) || [];
-                                  setExpandedText({ title: '컴플라이언스', content: complianceData, isTable: true });
+                                {expandedItems[`req-${req.id}`] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 text-center font-medium" style={{ width: '60px' }}>
+                            {itemsPerPage === 'all'
+                              ? index + 1
+                              : (currentPage - 1) * effectivePageSize + index + 1}
+                          </td>
+                          <td className="id-column px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.id}</td>
+                          <td className="px-6 py-2 text-sm text-gray-900" style={{ width: '200px' }}>
+                            <span
+                              className="line-clamp-2 block cursor-pointer hover:text-primary-600 transition-colors"
+                              onClick={() =>
+                                setExpandedText({
+                                  title: '보안 위협 상세',
+                                  threatData: {
+                                    threat: req.item_code,
+                                    details: req.regulation || req.title,
+                                    services: req.mapping_services || [],
+                                  },
+                                })
+                              }
+                            >
+                              {req.item_code || '-'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '350px' }}>
+                            <span
+                              className="line-clamp-3 block cursor-pointer hover:text-primary-600 transition-colors"
+                              onClick={() => setExpandedText({ title: '세부 사항', content: req.regulation || req.title })}
+                            >
+                              {req.regulation || req.title || '-'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap" style={{ width: '100px' }}>
+                            {getMappingStatusBadge(req.mapping_status)}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-700" style={{ width: '200px' }}>
+                            <div
+                              className="line-clamp-2 cursor-pointer hover:text-primary-600"
+                              onClick={() => {
+                                const complianceData =
+                                  req.applicable_hits?.map((hit) => ({
+                                    frameworks:
+                                      hit.matches?.map((m) => ({
+                                        code: m.framework_code?.toUpperCase(),
+                                        itemCode: m.item_code,
+                                        title: m.title,
+                                        regulation: m.regulation,
+                                      })) || [],
+                                  })) || [];
+                                setExpandedText({ title: '컴플라이언스', content: complianceData, isTable: true });
+                              }}
+                            >
+                              {req.applicable_hits
+                                ?.flatMap((hit) => hit.matches?.map((m) => m.framework_code?.toUpperCase()) || [])
+                                .filter((v, i, arr) => v && arr.indexOf(v) === i)
+                                .join(', ') || '-'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ width: '180px' }}>
+                            <div className="flex items-center gap-4">
+                              <button onClick={() => fetchMappingDetail(selectedFramework, req.id)} className="text-blue-600 hover:text-blue-800">
+                                상세보기
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  auditRequirement(selectedFramework, req.id);
                                 }}
+                                disabled={auditing}
+                                className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                               >
-                                {req.applicable_hits
-                                  ?.flatMap((hit) => hit.matches?.map((m) => m.framework_code?.toUpperCase()) || [])
-                                  .filter((v, i, arr) => v && arr.indexOf(v) === i)
-                                  .join(', ') || '-'}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm" style={{ width: '180px' }}>
-                              <div className="flex items-center gap-4">
-                                <button onClick={() => fetchMappingDetail(selectedFramework, req.id)} className="text-blue-600 hover:text-blue-800">
-                                  상세보기
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    auditRequirement(selectedFramework, req.id);
-                                  }}
-                                  disabled={auditing}
-                                  className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                                >
-                                  <Play className="w-3 h-3" />
-                                  진단
-                                </button>
+                                <Play className="w-3 h-3" />
+                                진단
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {expandedItems[`req-${req.id}`] && req.audit_result && (
+                          <tr className="bg-gray-50">
+                            <td colSpan="8" className="px-6 py-4">
+                              <div className="space-y-4">
+                                {req.audit_result.summary && (
+                                  <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                      <div className="text-2xl font-bold text-green-600">{req.audit_result.summary.COMPLIANT || 0}</div>
+                                      <div className="text-xs text-gray-600">준수</div>
+                                    </div>
+                                    <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                                      <div className="text-2xl font-bold text-red-600">{req.audit_result.summary.NON_COMPLIANT || 0}</div>
+                                      <div className="text-xs text-gray-600">미준수</div>
+                                    </div>
+                                    <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                      <div className="text-2xl font-bold text-yellow-600">{req.audit_result.summary.SKIPPED || 0}</div>
+                                      <div className="text-xs text-gray-600">건너뜀</div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {req.audit_result.results && req.audit_result.results.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {req.audit_result.results.map((result, idx) => {
+                                      const isResultExpanded = expandedItems[`result-${req.id}-${idx}`];
+                                      const borderColor =
+                                        result.status === 'COMPLIANT'
+                                          ? 'border-green-500'
+                                          : result.status === 'NON_COMPLIANT'
+                                          ? 'border-red-500'
+                                          : result.status === 'SKIPPED'
+                                          ? 'border-yellow-500'
+                                          : 'border-gray-500';
+                                      const statusBadge =
+                                        result.status === 'COMPLIANT'
+                                          ? 'bg-green-100 text-green-800'
+                                          : result.status === 'NON_COMPLIANT'
+                                          ? 'bg-red-100 text-red-800'
+                                          : result.status === 'SKIPPED'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : 'bg-gray-100 text-gray-800';
+
+                                      return (
+                                        <div key={idx} className={`border-l-4 ${borderColor} bg-white rounded-r-lg shadow-sm overflow-hidden`}>
+                                          <button
+                                            onClick={() => toggleExpand(`result-${req.id}-${idx}`)}
+                                            className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                          >
+                                            <div className="flex items-center gap-4">
+                                              <span className="font-bold text-gray-900">{result.mapping_code}</span>
+                                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge}`}>{getStatusText(result.status)}</span>
+                                              {result.evaluations && result.evaluations.length > 0 && (
+                                                <span className="text-sm text-gray-600">{result.evaluations.length}개 리소스 확인</span>
+                                              )}
+                                            </div>
+                                            {isResultExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                                          </button>
+
+                                          {isResultExpanded && (
+                                            <div className="border-t border-gray-200">
+                                              {result.evaluations && result.evaluations.length > 0 ? (
+                                                <div className="p-4 space-y-2">
+                                                  {result.evaluations.map((evaluation, evalIdx) => {
+                                                    const evalBgColor =
+                                                      evaluation.status === 'COMPLIANT' ? 'bg-green-50' : evaluation.status === 'NON_COMPLIANT' ? 'bg-red-50' : 'bg-gray-50';
+                                                    return (
+                                                      <div key={evalIdx} className={`flex items-center justify-between p-3 ${evalBgColor} rounded`}>
+                                                        <div className="flex-1">
+                                                          <div className="text-sm font-medium text-gray-900">
+                                                            {evaluation.service}
+                                                            {evaluation.resource_id && `: ${evaluation.resource_id}`}
+                                                          </div>
+                                                          <div className="text-xs text-gray-600 mt-1">{evaluation.decision}</div>
+                                                          {evaluation.extra?.error && (
+                                                            <div className="text-xs text-red-600 mt-1 p-2 bg-red-100 rounded">{evaluation.extra.error}</div>
+                                                          )}
+                                                        </div>
+                                                        {getStatusIcon(evaluation.status)}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              ) : result.reason ? (
+                                                <div className="p-4 bg-yellow-50 text-sm text-yellow-800">{result.reason}</div>
+                                              ) : (
+                                                <div className="p-4 text-sm text-gray-500">진단 결과 상세 없음</div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500">진단 결과가 없습니다.</p>
+                                )}
                               </div>
                             </td>
                           </tr>
-
-                          {expandedItems[`req-${req.id}`] && req.audit_result && (
-                            <tr className="bg-gray-50">
-                              <td colSpan="8" className="px-6 py-4">
-                                <div className="space-y-4">
-                                  {req.audit_result.summary && (
-                                    <div className="grid grid-cols-3 gap-4">
-                                      <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                        <div className="text-2xl font-bold text-green-600">{req.audit_result.summary.COMPLIANT || 0}</div>
-                                        <div className="text-xs text-gray-600">준수</div>
-                                      </div>
-                                      <div className="bg-red-50 p-3 rounded-lg border border-red-200">
-                                        <div className="text-2xl font-bold text-red-600">{req.audit_result.summary.NON_COMPLIANT || 0}</div>
-                                        <div className="text-xs text-gray-600">미준수</div>
-                                      </div>
-                                      <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                                        <div className="text-2xl font-bold text-yellow-600">{req.audit_result.summary.SKIPPED || 0}</div>
-                                        <div className="text-xs text-gray-600">건너뜀</div>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {req.audit_result.results && req.audit_result.results.length > 0 ? (
-                                    <div className="space-y-2">
-                                      {req.audit_result.results.map((result, idx) => {
-                                        const isResultExpanded = expandedItems[`result-${req.id}-${idx}`];
-                                        const borderColor =
-                                          result.status === 'COMPLIANT'
-                                            ? 'border-green-500'
-                                            : result.status === 'NON_COMPLIANT'
-                                            ? 'border-red-500'
-                                            : result.status === 'SKIPPED'
-                                            ? 'border-yellow-500'
-                                            : 'border-gray-500';
-                                        const statusBadge =
-                                          result.status === 'COMPLIANT'
-                                            ? 'bg-green-100 text-green-800'
-                                            : result.status === 'NON_COMPLIANT'
-                                            ? 'bg-red-100 text-red-800'
-                                            : result.status === 'SKIPPED'
-                                            ? 'bg-yellow-100 text-yellow-800'
-                                            : 'bg-gray-100 text-gray-800';
-
-                                        return (
-                                          <div key={idx} className={`border-l-4 ${borderColor} bg-white rounded-r-lg shadow-sm overflow-hidden`}>
-                                            <button
-                                              onClick={() => toggleExpand(`result-${req.id}-${idx}`)}
-                                              className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                                            >
-                                              <div className="flex items-center gap-4">
-                                                <span className="font-bold text-gray-900">{result.mapping_code}</span>
-                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge}`}>{getStatusText(result.status)}</span>
-                                                {result.evaluations && result.evaluations.length > 0 && (
-                                                  <span className="text-sm text-gray-600">{result.evaluations.length}개 리소스 확인</span>
-                                                )}
-                                              </div>
-                                              {isResultExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                                            </button>
-
-                                            {isResultExpanded && (
-                                              <div className="border-t border-gray-200">
-                                                {result.evaluations && result.evaluations.length > 0 ? (
-                                                  <div className="p-4 space-y-2">
-                                                    {result.evaluations.map((evaluation, evalIdx) => {
-                                                      const evalBgColor =
-                                                        evaluation.status === 'COMPLIANT' ? 'bg-green-50' : evaluation.status === 'NON_COMPLIANT' ? 'bg-red-50' : 'bg-gray-50';
-                                                      return (
-                                                        <div key={evalIdx} className={`flex items-center justify-between p-3 ${evalBgColor} rounded`}>
-                                                          <div className="flex-1">
-                                                            <div className="text-sm font-medium text-gray-900">
-                                                              {evaluation.service}
-                                                              {evaluation.resource_id && `: ${evaluation.resource_id}`}
-                                                            </div>
-                                                            <div className="text-xs text-gray-600 mt-1">{evaluation.decision}</div>
-                                                            {evaluation.extra?.error && (
-                                                              <div className="text-xs text-red-600 mt-1 p-2 bg-red-100 rounded">{evaluation.extra.error}</div>
-                                                            )}
-                                                          </div>
-                                                          {getStatusIcon(evaluation.status)}
-                                                        </div>
-                                                      );
-                                                    })}
-                                                  </div>
-                                                ) : result.reason ? (
-                                                  <div className="p-4 bg-yellow-50 text-sm text-yellow-800">{result.reason}</div>
-                                                ) : (
-                                                  <div className="p-4 text-sm text-gray-500">진단 결과 상세 없음</div>
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  ) : (
-                                    <p className="text-sm text-gray-500">진단 결과가 없습니다.</p>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
+                        )}
+                      </React.Fragment>
+                    ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Pagination */}
-              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+              {/* Pagination + 하단 페이지 크기 버튼 */}
+              <div className="px-6 py-4 border-t border-gray-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {/* 왼쪽: 범위 정보 */}
                 <div className="text-sm text-gray-700">
-                  {filteredRequirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, filteredRequirements.length)}-
-                  {Math.min(currentPage * itemsPerPage, filteredRequirements.length)} 표시
+                  {filteredRequirements.length}개 중 {rangeStart}-{rangeEnd} 표시
                 </div>
+
+                {/* 가운데: 페이지 버튼 */}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
+                    disabled={currentPage === 1 || itemsPerPage === 'all'}
                     className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     이전
                   </button>
                   <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.ceil(filteredRequirements.length / itemsPerPage) }, (_, i) => i + 1)
-                      .filter((page) => {
-                        const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage);
-                        if (totalPages <= 7) return true;
-                        if (page === 1 || page === totalPages) return true;
-                        if (page >= currentPage - 1 && page <= currentPage + 1) return true;
-                        if (page === currentPage - 2 || page === currentPage + 2) return page;
-                        return false;
-                      })
-                      .map((page, idx, array) => (
-                        <React.Fragment key={page}>
-                          {idx > 0 && array[idx - 1] !== page - 1 && <span className="px-2 text-gray-500">...</span>}
-                          <button
-                            onClick={() => setCurrentPage(page)}
-                            className={`px-3 py-1 rounded ${currentPage === page ? 'bg-primary-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}
-                          >
-                            {page}
-                          </button>
-                        </React.Fragment>
-                      ))}
+                    {itemsPerPage === 'all'
+                      ? (
+                        <button className="px-3 py-1 rounded bg-primary-600 text-white">1</button>
+                        )
+                      : Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter((page) => {
+                            if (totalPages <= 7) return true;
+                            if (page === 1 || page === totalPages) return true;
+                            if (page >= currentPage - 1 && page <= currentPage + 1) return true;
+                            if (page === currentPage - 2 || page === currentPage + 2) return page;
+                            return false;
+                          })
+                          .map((page, idx, array) => (
+                            <React.Fragment key={page}>
+                              {idx > 0 && array[idx - 1] !== page - 1 && <span className="px-2 text-gray-500">...</span>}
+                              <button
+                                onClick={() => setCurrentPage(page)}
+                                disabled={itemsPerPage === 'all'}
+                                className={`px-3 py-1 rounded ${currentPage === page ? 'bg-primary-600 text-white' : 'border border-gray-300 hover:bg-gray-50'} ${
+                                  itemsPerPage === 'all' ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            </React.Fragment>
+                          ))}
                   </div>
                   <button
-                    onClick={() => setCurrentPage((prev) => Math.min(Math.ceil(filteredRequirements.length / itemsPerPage), prev + 1))}
-                    disabled={currentPage === Math.ceil(filteredRequirements.length / itemsPerPage)}
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages || itemsPerPage === 'all'}
                     className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     다음
                   </button>
+                </div>
+
+                {/* 오른쪽: 페이지 크기 버튼 그룹 */}
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-sm text-gray-600 mr-1">표시 수</span>
+                  <div className="inline-flex rounded-xl overflow-hidden border border-gray-300">
+                    {PAGE_SIZE_OPTIONS.map((opt, i) => {
+                      const active = itemsPerPage === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => { setItemsPerPage(opt.value); setCurrentPage(1); }}
+                          className={[
+                            'px-3 py-1 text-sm transition-colors',
+                            active ? 'bg-primary-600 text-white' : 'bg-white hover:bg-gray-50 text-gray-700',
+                            i !== PAGE_SIZE_OPTIONS.length - 1 ? 'border-r border-gray-300' : '',
+                          ].join(' ')}
+                          title={`${opt.label}개 표시`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </>
