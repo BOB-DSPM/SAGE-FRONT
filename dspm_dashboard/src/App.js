@@ -26,25 +26,25 @@ import OpensourceDetail from './pages/OpensourceDetail';
 import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3, ClipboardList, FolderSearch, ShieldAlert, Boxes } from 'lucide-react';
 
 const tabs = [
-  { id: 'overview', name: 'Overview', icon: Activity },
+  { id: '메인', name: 'Overview', icon: Activity },
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
-  { id: 'data-target', name: 'Data Collector', icon: FolderSearch },
-  { id: 'lineage', name: 'Lineage', icon: GitBranch },
+  { id: '데이터 수집/식별', name: 'Data Collector', icon: FolderSearch },
+  { id: '라인리지', name: 'Lineage', icon: GitBranch },
 
   // 아코디언 메뉴
   { 
     id: 'audit', 
-    name: 'Audit', 
+    name: '감사', 
     icon: ClipboardList,
     children: [
-      { id: 'policies2', name: 'Compliance', icon: ClipboardList },
-      { id: 'threat-compliance', name: 'Threats', icon: ShieldAlert },
+      { id: 'policies2', name: '컴플라이언스', icon: ClipboardList },
+      { id: 'threat-compliance', name: '위협', icon: ShieldAlert },
     ]
   },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
   // { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 
-  { id: 'opensource', name: 'Opensource', icon: Boxes },
+  { id: 'opensource', name: '오픈소스', icon: Boxes },
 ];
 
 const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
