@@ -20,11 +20,8 @@ const ThreatCompliance = () => {
   const [streaming, setStreaming] = useState(false);
   const [progress, setProgress] = useState({ total: 0, executed: 0 });
   const [expandedText, setExpandedText] = useState(null);
-
-  // ▼ 변경: itemsPerPage setter 추가
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-
+  const [itemsPerPage] = useState(10);
   const [selectedThreatGroup, setSelectedThreatGroup] = useState('전체');
   const [threatGroups, setThreatGroups] = useState([]);
 
@@ -49,22 +46,38 @@ const ThreatCompliance = () => {
       const response = await fetch(`${API_BASE}/compliance/${frameworkCode}/requirements:groups`);
       const data = await response.json();
       
+      // 배열 검증 추가
+      console.log('API 응답 타입:', typeof data);
+      console.log('API 응답 값:', data);
+      console.log('배열인가?:', Array.isArray(data));
+      
       if (Array.isArray(data)) {
         setRequirements(data);
+        
+        // 위협 그룹 추출 및 중복 제거
         const groups = new Set();
         data.forEach(req => {
           if (req.threat_groups && Array.isArray(req.threat_groups)) {
-            req.threat_groups.forEach(group => { if (group) groups.add(group); });
+            req.threat_groups.forEach(group => {
+              if (group) groups.add(group);
+            });
           }
         });
         setThreatGroups(['전체', ...Array.from(groups).sort()]);
+        
       } else if (data && typeof data === 'object') {
+        // 객체인 경우 values로 변환 시도
+        console.warn('응답이 배열이 아닙니다. 객체를 배열로 변환합니다.');
         const arrayData = Object.values(data);
         setRequirements(arrayData);
+        
+        // 위협 그룹 추출
         const groups = new Set();
         arrayData.forEach(req => {
           if (req.threat_groups && Array.isArray(req.threat_groups)) {
-            req.threat_groups.forEach(group => { if (group) groups.add(group); });
+            req.threat_groups.forEach(group => {
+              if (group) groups.add(group);
+            });
           }
         });
         setThreatGroups(['전체', ...Array.from(groups).sort()]);
@@ -237,23 +250,15 @@ const ThreatCompliance = () => {
     setExpandedItems({});
   };
 
+  // 안전한 requirements 배열 사용
   const safeRequirements = Array.isArray(requirements) ? requirements : [];
 
+  // 위협 그룹 필터링
   const filteredRequirements = selectedThreatGroup === '전체' 
     ? safeRequirements 
     : safeRequirements.filter(req => 
         req.threat_groups && req.threat_groups.includes(selectedThreatGroup)
       );
-
-  // ▼ itemsPerPage가 바뀌면 페이지를 1로
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [itemsPerPage, selectedThreatGroup]);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredRequirements.length / (itemsPerPage || 1))
-  );
 
   return (
     <div className="relative">
@@ -277,7 +282,7 @@ const ThreatCompliance = () => {
 
       <div className="flex items-center gap-3">
         <ClipboardList className="w-8 h-8 text-primary-500" />
-        <h1 className="text-3xl font-bold text-gray-900"></h1>
+        <h1 className="text-3xl font-bold text-gray-900">Threats</h1>
       </div>
 
       <div className="flex items-center gap-2 text-sm text-gray-600 py-2 px-2">
@@ -327,33 +332,33 @@ const ThreatCompliance = () => {
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* 위협 그룹 필터 */}
-              <div className="flex flex-wrap gap-4">
-                {threatGroups.map(group => (
-                  <button
-                    key={group}
-                    onClick={() => {
-                      setSelectedThreatGroup(group);
-                      setCurrentPage(1);
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      selectedThreatGroup === group
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {group}
-                    {group !== '전체' && (
-                      <span className="ml-2 text-xs opacity-75">
-                        ({safeRequirements.filter(req => 
-                          req.threat_groups && req.threat_groups.includes(group)
-                        ).length})
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+            {/* 위협 그룹 필터 */}
+            <div className="flex flex-wrap gap-4">
+              {threatGroups.map(group => (
+                <button
+                  key={group}
+                  onClick={() => {
+                    setSelectedThreatGroup(group);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedThreatGroup === group
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {group}
+                  {group !== '전체' && (
+                    <span className="ml-2 text-xs opacity-75">
+                      ({safeRequirements.filter(req => 
+                        req.threat_groups && req.threat_groups.includes(group)
+                      ).length})
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
           
@@ -479,6 +484,7 @@ const ThreatCompliance = () => {
                           <tr className="bg-gray-50">
                             <td colSpan="8" className="px-6 py-4">
                               <div className="space-y-4">
+                                {/* 요약 통계 */}
                                 {req.audit_result.summary && (
                                   <div className="grid grid-cols-3 gap-4">
                                     <div className="bg-green-50 p-3 rounded-lg border border-green-200">
@@ -502,6 +508,7 @@ const ThreatCompliance = () => {
                                   </div>
                                 )}
 
+                                {/* 진단 결과 아코디언 */}
                                 {req.audit_result.results && req.audit_result.results.length > 0 ? (
                                   <div className="space-y-2">
                                     {req.audit_result.results.map((result, idx) => {
@@ -596,14 +603,11 @@ const ThreatCompliance = () => {
                 </table>
               </div>
 
-              {/* Pagination + 하단 페이지 크기 버튼 */}
-              <div className="px-6 py-4 border-t border-gray-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {/* Pagination */}
+              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                 <div className="text-sm text-gray-700">
-                  {filteredRequirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, filteredRequirements.length)}-
-                  {Math.min(currentPage * itemsPerPage, filteredRequirements.length)} 표시
+                  {filteredRequirements.length}개 중 {Math.min((currentPage - 1) * itemsPerPage + 1, filteredRequirements.length)}-{Math.min(currentPage * itemsPerPage, filteredRequirements.length)} 표시
                 </div>
-
-                {/* 가운데: 페이지네이션 */}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -613,8 +617,9 @@ const ThreatCompliance = () => {
                     이전
                   </button>
                   <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .filter((page) => {
+                    {Array.from({ length: Math.ceil(filteredRequirements.length / itemsPerPage) }, (_, i) => i + 1)
+                      .filter(page => {
+                        const totalPages = Math.ceil(filteredRequirements.length / itemsPerPage);
                         if (totalPages <= 7) return true;
                         if (page === 1 || page === totalPages) return true;
                         if (page >= currentPage - 1 && page <= currentPage + 1) return true;
@@ -640,52 +645,12 @@ const ThreatCompliance = () => {
                       ))}
                   </div>
                   <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredRequirements.length / itemsPerPage), prev + 1))}
+                    disabled={currentPage === Math.ceil(filteredRequirements.length / itemsPerPage)}
                     className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     다음
                   </button>
-                </div>
-
-                {/* 오른쪽: 페이지 크기 버튼 그룹 (10 / 20 / 50 / 전체) */}
-                <div className="flex items-center gap-2 justify-end">
-                  <span className="text-sm text-gray-600 mr-1">표시 수</span>
-                  <div className="inline-flex rounded-xl overflow-hidden border border-gray-300">
-                    {[
-                      { label: '10', value: 10 },
-                      { label: '20', value: 20 },
-                      { label: '50', value: 50 },
-                      { label: '전체', value: 'all' },
-                    ].map((opt, i, arr) => {
-                      const isActive =
-                        opt.value === 'all'
-                          ? itemsPerPage >= filteredRequirements.length && filteredRequirements.length > 0
-                          : itemsPerPage === opt.value;
-
-                      return (
-                        <button
-                          key={opt.label}
-                          onClick={() => {
-                            const next =
-                              opt.value === 'all'
-                                ? Math.max(1, filteredRequirements.length)
-                                : opt.value;
-                            setItemsPerPage(next);
-                            setCurrentPage(1);
-                          }}
-                          className={[
-                            'px-3 py-1 text-sm transition-colors',
-                            isActive ? 'bg-primary-600 text-white' : 'bg-white hover:bg-gray-50 text-gray-700',
-                            i !== arr.length - 1 ? 'border-r border-gray-300' : '',
-                          ].join(' ')}
-                          title={`${opt.label}개 표시`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
                 </div>
               </div>
             </>
@@ -702,6 +667,7 @@ const ThreatCompliance = () => {
             className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-hidden m-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* 헤더 */}
             <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center">
               <h3 className="text-lg font-semibold text-gray-900">{expandedText.title}</h3>
               <button 
@@ -712,8 +678,10 @@ const ThreatCompliance = () => {
               </button>
             </div>
 
+            {/* 컨텐츠 영역 */}
             <div className="overflow-y-auto max-h-[calc(80vh-80px)] p-6">
               {expandedText.isTable ? (
+                // 컴플라이언스 테이블
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
@@ -753,7 +721,9 @@ const ThreatCompliance = () => {
                   </div>
                 </div>
               ) : expandedText.threatData ? (
+                // 보안 위협 상세 정보
                 <div className="space-y-6">
+                  {/* 보안 위협 정보 */}
                   <div className="bg-primary-50 border border-primary-200 rounded-lg p-5">
                     <h4 className="text-sm font-semibold text-primary-900 mb-3 flex items-center gap-2">
                       <AlertCircle className="w-5 h-5" />
@@ -764,6 +734,7 @@ const ThreatCompliance = () => {
                     </p>
                   </div>
 
+                  {/* 세부 사항 */}
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">세부 사항</h4>
                     <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
@@ -771,6 +742,7 @@ const ThreatCompliance = () => {
                     </p>
                   </div>
 
+                  {/* 관련 서비스 */}
                   {expandedText.threatData.services && expandedText.threatData.services.length > 0 && (
                     <div className="bg-white border border-gray-200 rounded-lg p-5">
                       <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -794,6 +766,7 @@ const ThreatCompliance = () => {
                   )}
                 </div>
               ) : (
+                // 일반 텍스트
                 <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
                   {expandedText.content || '-'}
                 </div>
