@@ -30,7 +30,7 @@ const CATEGORY_META = {
   },
   public: {
     key: 'public',
-    label: '고유식별·민감 아님(일반 개인정보)',
+    label: '개인정보',
     badge: 'bg-orange-100 text-orange-800 border-orange-300',
     icon: <CheckCircle className="w-4 h-4 text-orange-600" />,
   },
