@@ -1022,7 +1022,7 @@ const Lineage = () => {
     <div className="h-full flex flex-col bg-gray-50">
       {/* 헤더 */}
       <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm flex-shrink-0">
-        <h1 className="text-2xl font-bold text-gray-800 mr-6">라인리지</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mr-6">데이터 흐름추적</h1>
 
         {/* 도메인 선택 */}
         <div className="relative mr-4">

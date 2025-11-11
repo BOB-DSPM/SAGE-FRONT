@@ -29,12 +29,12 @@ const tabs = [
   { id: 'overview', name: '메인', icon: Activity },
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
   { id: 'data-target', name: '데이터 수집/식별', icon: FolderSearch },
-  { id: 'lineage', name: '라인리지', icon: GitBranch },
+  { id: 'lineage', name: '데이터 흐름 추적', icon: GitBranch },
 
   // 아코디언 메뉴
   { 
     id: 'audit', 
-    name: '감사', 
+    name: '진단', 
     icon: ClipboardList,
     children: [
       { id: 'policies2', name: '컴플라이언스', icon: ClipboardList },
@@ -44,7 +44,7 @@ const tabs = [
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
   // { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 
-  { id: 'opensource', name: '오픈소스', icon: Boxes },
+  // { id: 'opensource', name: '오픈소스', icon: Boxes },
 ];
 
 const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
