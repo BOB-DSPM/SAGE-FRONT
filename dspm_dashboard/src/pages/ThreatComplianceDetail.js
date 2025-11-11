@@ -1,17 +1,24 @@
 // src/pages/ThreatComplianceDetail.js
-// (페이지 크기 선택: 10 / 20 / 50 / 전체 + 페이지네이션 추가)
+// (페이지 크기 선택: 10 / 20 / 50 / 전체 + 페이지네이션, 문자열 값으로 통일, localStorage 복원)
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const API_BASE_URL = 'http://43.202.228.52:8003';
+const LS_KEY = 'threat.pageSize';
 
 const PAGE_SIZE_OPTIONS = [
-  { label: '10', value: 10 },
-  { label: '20', value: 20 },
-  { label: '50', value: 50 },
+  { label: '10', value: '10' },
+  { label: '20', value: '20' },
+  { label: '50', value: '50' },
   { label: '전체', value: 'all' },
 ];
+
+function toPageSizeNumber(psStr, total) {
+  if (psStr === 'all') return total || 1;
+  const n = parseInt(psStr, 10);
+  return Number.isFinite(n) && n > 0 ? n : 10;
+}
 
 const ThreatComplianceDetail = () => {
   const { reqId } = useParams();
@@ -21,8 +28,12 @@ const ThreatComplianceDetail = () => {
   const [error, setError] = useState(null);
   const [expandedMapping, setExpandedMapping] = useState(null);
 
-  // ── 새로 추가된 상태값: 페이지 크기/현재 페이지 ─────────────────────────────
-  const [pageSize, setPageSize] = useState(10); // 기본 10
+  // ── 페이지 크기/현재 페이지 (문자열로 관리) ────────────────────────────────────
+  const [pageSize, setPageSize] = useState(() => {
+    // 초기 로드 시 localStorage 복원(없으면 '10')
+    const saved = typeof window !== 'undefined' ? window.localStorage.getItem(LS_KEY) : null;
+    return saved && ['10', '20', '50', 'all'].includes(saved) ? saved : '10';
+  });
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -34,6 +45,8 @@ const ThreatComplianceDetail = () => {
         );
         setDetail(response.data);
         setError(null);
+        setExpandedMapping(null);
+        setPage(1);
       } catch (err) {
         console.error('상세 정보 로드 실패:', err);
         setError('상세 정보를 불러오는데 실패했습니다.');
@@ -64,8 +77,7 @@ const ThreatComplianceDetail = () => {
   const totalItems = mappings.length;
 
   const effectivePageSize = useMemo(() => {
-    if (pageSize === 'all') return totalItems || 1;
-    return pageSize;
+    return toPageSizeNumber(pageSize, totalItems);
   }, [pageSize, totalItems]);
 
   const totalPages = useMemo(() => {
@@ -74,11 +86,17 @@ const ThreatComplianceDetail = () => {
     return Math.max(1, Math.ceil(totalItems / effectivePageSize));
   }, [totalItems, pageSize, effectivePageSize]);
 
-  // 페이지 크기 변경 시 1페이지로 리셋
+  // 페이지 크기 변경 시 1페이지로 리셋 + 저장
   useEffect(() => {
     setPage(1);
     setExpandedMapping(null);
+    try { window.localStorage.setItem(LS_KEY, pageSize); } catch {}
   }, [pageSize]);
+
+  // 페이지 이동 시 펼친 항목 초기화(UX)
+  useEffect(() => {
+    setExpandedMapping(null);
+  }, [page]);
 
   // 현재 페이지 범위에 맞는 아이템 슬라이싱
   const paginatedMappings = useMemo(() => {
@@ -162,14 +180,11 @@ const ThreatComplianceDetail = () => {
               <label className="text-sm text-gray-600">표시 수</label>
               <select
                 className="border border-gray-300 rounded px-2 py-1 text-sm"
-                value={pageSize}
-                onChange={(e) => {
-                  const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
-                  setPageSize(v);
-                }}
+                value={pageSize} // 문자열
+                onChange={(e) => setPageSize(e.target.value)} // 그대로 문자열 저장
               >
                 {PAGE_SIZE_OPTIONS.map((opt) => (
-                  <option key={opt.label} value={opt.value}>
+                  <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
                 ))}
