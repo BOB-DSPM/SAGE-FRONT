@@ -1,10 +1,17 @@
 // src/pages/ThreatComplianceDetail.js
-// (원본과 동일, 기능상 수정 없음. 필요 시 세션 체크를 붙일 수 있으나 현재 API가 불필요)
-import React, { useState, useEffect } from 'react';
+// (페이지 크기 선택: 10 / 20 / 50 / 전체 + 페이지네이션 추가)
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const API_BASE_URL = 'http://43.202.228.52:8003';
+
+const PAGE_SIZE_OPTIONS = [
+  { label: '10', value: 10 },
+  { label: '20', value: 20 },
+  { label: '50', value: 50 },
+  { label: '전체', value: 'all' },
+];
 
 const ThreatComplianceDetail = () => {
   const { reqId } = useParams();
@@ -13,6 +20,10 @@ const ThreatComplianceDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedMapping, setExpandedMapping] = useState(null);
+
+  // ── 새로 추가된 상태값: 페이지 크기/현재 페이지 ─────────────────────────────
+  const [pageSize, setPageSize] = useState(10); // 기본 10
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -47,6 +58,39 @@ const ThreatComplianceDetail = () => {
     const config = statusConfig[status || ''] || { label: status || '미확인', className: 'bg-gray-100 text-gray-600' };
     return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${config.className}`}>{config.label}</span>;
   };
+
+  // ── 페이지네이션 계산 ───────────────────────────────────────────────────────
+  const mappings = detail?.mappings || [];
+  const totalItems = mappings.length;
+
+  const effectivePageSize = useMemo(() => {
+    if (pageSize === 'all') return totalItems || 1;
+    return pageSize;
+  }, [pageSize, totalItems]);
+
+  const totalPages = useMemo(() => {
+    if (!totalItems) return 1;
+    if (pageSize === 'all') return 1;
+    return Math.max(1, Math.ceil(totalItems / effectivePageSize));
+  }, [totalItems, pageSize, effectivePageSize]);
+
+  // 페이지 크기 변경 시 1페이지로 리셋
+  useEffect(() => {
+    setPage(1);
+    setExpandedMapping(null);
+  }, [pageSize]);
+
+  // 현재 페이지 범위에 맞는 아이템 슬라이싱
+  const paginatedMappings = useMemo(() => {
+    if (pageSize === 'all') return mappings;
+    const start = (page - 1) * effectivePageSize;
+    const end = start + effectivePageSize;
+    return mappings.slice(start, end);
+  }, [mappings, page, pageSize, effectivePageSize]);
+
+  // 보여주는 인덱스 범위 표시용
+  const rangeStart = totalItems === 0 ? 0 : (pageSize === 'all' ? 1 : (page - 1) * effectivePageSize + 1);
+  const rangeEnd = pageSize === 'all' ? totalItems : Math.min(page * effectivePageSize, totalItems);
 
   if (loading) {
     return (
@@ -107,89 +151,169 @@ const ThreatComplianceDetail = () => {
       </div>
 
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-bold text-gray-900 mb-4">AWS 보안 통제 매핑 ({detail.mappings.length}개)</h2>
-        {detail.mappings.length === 0 ? (
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <h2 className="text-lg font-bold text-gray-900">
+            AWS 보안 통제 매핑 ({totalItems}개)
+          </h2>
+
+          {/* 페이지 크기 선택 + 범위/페이지 표시 */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">표시 수</label>
+              <select
+                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                value={pageSize}
+                onChange={(e) => {
+                  const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                  setPageSize(v);
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((opt) => (
+                  <option key={opt.label} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="text-sm text-gray-600">
+              {totalItems > 0 ? `${rangeStart}-${rangeEnd} / ${totalItems}` : '0 / 0'}
+            </div>
+
+            {/* 페이지 버튼 */}
+            <div className="flex items-center gap-1">
+              <button
+                className="px-2 py-1 border rounded text-sm disabled:opacity-50"
+                onClick={() => setPage(1)}
+                disabled={page <= 1 || pageSize === 'all'}
+                title="처음"
+              >
+                «
+              </button>
+              <button
+                className="px-2 py-1 border rounded text-sm disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || pageSize === 'all'}
+                title="이전"
+              >
+                ‹
+              </button>
+              <span className="px-2 text-sm text-gray-700">
+                {pageSize === 'all' ? '1 / 1' : `${page} / ${totalPages}`}
+              </span>
+              <button
+                className="px-2 py-1 border rounded text-sm disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || pageSize === 'all'}
+                title="다음"
+              >
+                ›
+              </button>
+              <button
+                className="px-2 py-1 border rounded text-sm disabled:opacity-50"
+                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages || pageSize === 'all'}
+                title="끝"
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {totalItems === 0 ? (
           <div className="text-center py-12 text-gray-500">매핑된 보안 통제가 없습니다.</div>
         ) : (
           <div className="space-y-4">
-            {detail.mappings.map((mapping, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100" onClick={() => toggleMapping(index)}>
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-white border border-gray-200 rounded font-mono text-sm font-bold text-blue-600">
-                      {mapping.code}
-                    </span>
-                    {mapping.service && (
-                      <span className="px-3 py-1 bg-gray-200 rounded text-sm font-semibold text-gray-700">{mapping.service}</span>
-                    )}
-                  </div>
-                  <button className="text-gray-500">{expandedMapping === index ? '▲' : '▼'}</button>
-                </div>
+            {paginatedMappings.map((mapping, idx) => {
+              // 전역 인덱스 계산 (접기/펼치기 상태 구분을 위해)
+              const globalIndex =
+                pageSize === 'all'
+                  ? idx
+                  : (page - 1) * effectivePageSize + idx;
 
-                {expandedMapping === index && (
-                  <div className="p-4 space-y-4">
-                    {mapping.category && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">카테고리</label>
-                        <div className="text-gray-900">{mapping.category}</div>
-                      </div>
-                    )}
-                    {mapping.console_path && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">콘솔 경로</label>
-                        <div className="font-mono text-sm bg-gray-50 p-3 rounded border border-gray-200">{mapping.console_path}</div>
-                      </div>
-                    )}
-                    {mapping.check_how && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">점검 방법</label>
-                        <div className="text-gray-900">{mapping.check_how}</div>
-                      </div>
-                    )}
-                    {mapping.cli_cmd && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">CLI 명령어</label>
-                        <pre className="font-mono text-sm bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto">{mapping.cli_cmd}</pre>
-                      </div>
-                    )}
-                    {mapping.return_field && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">반환 필드</label>
-                        <div className="font-mono text-sm bg-gray-50 p-3 rounded border border-gray-200">{mapping.return_field}</div>
-                      </div>
-                    )}
-                    {(mapping.compliant_value || mapping.non_compliant_value) && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
-                        {mapping.compliant_value && (
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">준수 값</label>
-                            <div className="font-semibold text-green-700 bg-green-50 p-2 rounded">{mapping.compliant_value}</div>
-                          </div>
-                        )}
-                        {mapping.non_compliant_value && (
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">미준수 값</label>
-                            <div className="font-semibold text-red-700 bg-red-50 p-2 rounded">{mapping.non_compliant_value}</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {mapping.console_fix && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">콘솔 수정 방법</label>
-                        <div className="text-gray-900">{mapping.console_fix}</div>
-                      </div>
-                    )}
-                    {mapping.cli_fix_cmd && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">CLI 수정 명령어</label>
-                        <pre className="font-mono text-sm bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto">{mapping.cli_fix_cmd}</pre>
-                      </div>
-                    )}
+              return (
+                <div key={globalIndex} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div
+                    className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100"
+                    onClick={() => toggleMapping(globalIndex)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="px-3 py-1 bg-white border border-gray-200 rounded font-mono text-sm font-bold text-blue-600">
+                        {mapping.code}
+                      </span>
+                      {mapping.service && (
+                        <span className="px-3 py-1 bg-gray-200 rounded text-sm font-semibold text-gray-700">{mapping.service}</span>
+                      )}
+                    </div>
+                    <button className="text-gray-500">{expandedMapping === globalIndex ? '▲' : '▼'}</button>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {expandedMapping === globalIndex && (
+                    <div className="p-4 space-y-4">
+                      {mapping.category && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">카테고리</label>
+                          <div className="text-gray-900">{mapping.category}</div>
+                        </div>
+                      )}
+                      {mapping.console_path && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">콘솔 경로</label>
+                          <div className="font-mono text-sm bg-gray-50 p-3 rounded border border-gray-200">{mapping.console_path}</div>
+                        </div>
+                      )}
+                      {mapping.check_how && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">점검 방법</label>
+                          <div className="text-gray-900">{mapping.check_how}</div>
+                        </div>
+                      )}
+                      {mapping.cli_cmd && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">CLI 명령어</label>
+                          <pre className="font-mono text-sm bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto">{mapping.cli_cmd}</pre>
+                        </div>
+                      )}
+                      {mapping.return_field && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">반환 필드</label>
+                          <div className="font-mono text-sm bg-gray-50 p-3 rounded border border-gray-200">{mapping.return_field}</div>
+                        </div>
+                      )}
+                      {(mapping.compliant_value || mapping.non_compliant_value) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
+                          {mapping.compliant_value && (
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">준수 값</label>
+                              <div className="font-semibold text-green-700 bg-green-50 p-2 rounded">{mapping.compliant_value}</div>
+                            </div>
+                          )}
+                          {mapping.non_compliant_value && (
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">미준수 값</label>
+                              <div className="font-semibold text-red-700 bg-red-50 p-2 rounded">{mapping.non_compliant_value}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {mapping.console_fix && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">콘솔 수정 방법</label>
+                          <div className="text-gray-900">{mapping.console_fix}</div>
+                        </div>
+                      )}
+                      {mapping.cli_fix_cmd && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">CLI 수정 명령어</label>
+                          <pre className="font-mono text-sm bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto">{mapping.cli_fix_cmd}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
