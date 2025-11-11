@@ -1,169 +1,127 @@
 // src/services/complianceApi.js
-const AUDIT_API_BASE = 'http://43.202.228.52:8103';
+// 감사 API 클라이언트 (세션 ID를 항상 안전하게 쿼리스트링에 부착)
+const AUDIT_API_BASE = "http://43.202.228.52:8103";
+
+function withSession(url, sessionId) {
+  const u = new URL(url);
+  if (sessionId) {
+    // UUID 같은 단순 문자열만 들어감
+    u.searchParams.set("session_id", String(sessionId));
+  }
+  return u.toString();
+}
 
 export const complianceApi = {
   // 세션 존재 여부 확인 (GET /audit/session/{session_id})
   async checkSession(sessionId) {
-    const url = `${AUDIT_API_BASE}/audit/session/${sessionId}`;
-    console.log('세션 존재 확인 URL:', url);
-    
+    const url = `${AUDIT_API_BASE}/audit/session/${encodeURIComponent(sessionId)}`;
+    console.log("세션 존재 확인 URL:", url);
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      console.log('📡 세션 확인 응답:', response.status, response.statusText);
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          console.log('세션 없음 (404)');
-          return { exists: false };
-        }
-        throw new Error(`Failed to check session: ${response.status}`);
+      const res = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
+      console.log("📡 세션 확인 응답:", res.status, res.statusText);
+      if (!res.ok) {
+        if (res.status === 404) return { exists: false };
+        throw new Error(`Failed to check session: ${res.status}`);
       }
-
-      const data = await response.json();
-      console.log('✅ 세션 확인 결과:', data);
+      const data = await res.json();
+      console.log("✅ 세션 확인 결과:", data);
       return data;
-    } catch (error) {
-      console.error('세션 확인 실패:', error);
+    } catch (e) {
+      console.error("세션 확인 실패:", e);
       return { exists: false };
     }
   },
 
   // 프레임워크 전체 감사 (배치) - 캐시된 결과 반환 가능
   async auditAll(framework, sessionId) {
-    const url = new URL(`${AUDIT_API_BASE}/audit/${framework}/_all`);
-    url.searchParams.append('stream', 'false');
-    if (sessionId) {
-      url.searchParams.append('session_id', sessionId);
+    const u = new URL(`${AUDIT_API_BASE}/audit/${framework}/_all`);
+    u.searchParams.set("stream", "false");
+    if (sessionId) u.searchParams.set("session_id", sessionId);
+
+    console.log("전체 감사 (배치) URL:", u.toString());
+    const res = await fetch(u.toString(), { method: "POST", headers: { "Content-Type": "application/json" } });
+    console.log("📡 전체 감사 응답:", res.status, res.statusText);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("전체 감사 실패:", text);
+      throw new Error(`Audit failed: ${res.status} - ${text}`);
     }
-
-    console.log('전체 감사 (배치) URL:', url.toString());
-
-    const response = await fetch(url.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    console.log('📡 전체 감사 응답:', response.status, response.statusText);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('전체 감사 실패:', errorText);
-      throw new Error(`Audit failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log('전체 감사 결과:', data);
-    return data;
+    return res.json();
   },
 
-  // 프레임워크 전체 감사 (스트리밍)
+  // 프레임워크 전체 감사 (스트리밍, NDJSON)
   async auditAllStreaming(framework, sessionId, onProgress) {
-    const url = new URL(`${AUDIT_API_BASE}/audit/${framework}/_all`);
-    url.searchParams.append('stream', 'true');
-    if (sessionId) {
-      url.searchParams.append('session_id', sessionId);
+    const u = new URL(`${AUDIT_API_BASE}/audit/${framework}/_all`);
+    u.searchParams.set("stream", "true");
+    if (sessionId) u.searchParams.set("session_id", sessionId);
+
+    console.log("전체 감사 스트리밍 URL:", u.toString());
+    const res = await fetch(u.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+      },
+    });
+    console.log("📡 전체 감사 응답:", res.status, res.statusText);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("전체 감사 실패:", text);
+      throw new Error(`Audit failed: ${res.status} - ${text}`);
     }
 
-    console.log('전체 감사 스트리밍 URL:', url.toString());
-    try {
-      const response = await fetch(url.toString(), {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/x-ndjson'
-        },
-      });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let leftover = "";
+    let lineCount = 0;
 
-      console.log('📡 전체 감사 응답:', response.status, response.statusText);
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('전체 감사 실패:', errorText);
-        throw new Error(`Audit failed: ${response.status} - ${errorText}`);
+      const chunk = leftover + decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n");
+      leftover = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        lineCount++;
+        try {
+          const evt = JSON.parse(line);
+          onProgress?.(evt);
+        } catch (e) {
+          console.error("JSON 파싱 실패:", line, e);
+        }
       }
+    }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let leftover = '';
-      let lineCount = 0;
-
+    if (leftover.trim()) {
+      lineCount++;
       try {
-        while (true) {
-          const { value, done } = await reader.read();
-          
-          if (done) {
-            console.log('스트리밍 완료. 총 라인 수:', lineCount);
-            break;
-          }
-
-          const chunk = leftover + decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-          leftover = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            lineCount++;
-            try {
-              const evt = JSON.parse(line);
-              if (onProgress) {
-                onProgress(evt);
-              }
-            } catch (error) {
-              console.error('JSON 파싱 실패:', line, error);
-            }
-          }
-        }
-
-        // 남은 데이터 처리
-        if (leftover.trim()) {
-          lineCount++;
-          try {
-            const evt = JSON.parse(leftover);
-            if (onProgress) {
-              onProgress(evt);
-            }
-          } catch (error) {
-            console.error('leftover 파싱 실패:', leftover, error);
-          }
-        }
-      } catch (readerError) {
-        console.error('스트리밍 읽기 중 에러:', readerError);
-        console.log('처리된 라인 수:', lineCount);
+        const evt = JSON.parse(leftover);
+        onProgress?.(evt);
+      } catch (e) {
+        console.error("leftover 파싱 실패:", leftover, e);
       }
-    } catch (fetchError) {
-      console.error('Fetch 에러:', fetchError);
-      throw fetchError;
     }
+
+    console.log("스트리밍 완료. 총 라인 수:", lineCount);
   },
 
   // 특정 요구사항 감사 - 캐시된 결과 반환 가능
   async auditRequirement(framework, requirementId, sessionId) {
-    const url = new URL(`${AUDIT_API_BASE}/audit/audit/${framework}/${requirementId}`);
-    if (sessionId) {
-      url.searchParams.append('session_id', sessionId);
+    const base = `${AUDIT_API_BASE}/audit/audit/${framework}/${requirementId}`;
+    const url = withSession(base, sessionId);
+    console.log("개별 감사 URL:", url);
+
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    console.log("📡 개별 감사 응답:", res.status, res.statusText);
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("개별 감사 실패:", text);
+      throw new Error(`Audit failed: ${res.status} - ${text}`);
     }
-
-    console.log('개별 감사 URL:', url.toString());
-
-    const response = await fetch(url.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    console.log('📡 개별 감사 응답:', response.status, response.statusText);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('개별 감사 실패:', errorText);
-      throw new Error(`Audit failed: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log('개별 감사 결과:', data);
-    return data;
+    return res.json();
   },
 };
