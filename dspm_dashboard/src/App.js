@@ -26,10 +26,10 @@ import OpensourceDetail from './pages/OpensourceDetail';
 import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3, ClipboardList, FolderSearch, ShieldAlert, Boxes } from 'lucide-react';
 
 const tabs = [
-  { id: '메인', name: 'Overview', icon: Activity },
+  { id: 'overview', name: '메인', icon: Activity },
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
-  { id: '데이터 수집/식별', name: 'Data Collector', icon: FolderSearch },
-  { id: '라인리지', name: 'Lineage', icon: GitBranch },
+  { id: 'data-target', name: '데이터 수집/식별', icon: FolderSearch },
+  { id: 'lineage', name: '라인리지', icon: GitBranch },
 
   // 아코디언 메뉴
   { 
@@ -38,7 +38,7 @@ const tabs = [
     icon: ClipboardList,
     children: [
       { id: 'policies2', name: '컴플라이언스', icon: ClipboardList },
-      { id: 'threat-compliance', name: '위협', icon: ShieldAlert },
+      { id: 'threat-compliance', name: '위험', icon: ShieldAlert },
     ]
   },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
