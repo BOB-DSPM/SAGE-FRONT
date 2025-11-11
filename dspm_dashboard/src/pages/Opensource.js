@@ -62,7 +62,7 @@ export default function Opensource() {
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Opensource</h1>
+        <h1 className="text-2xl font-bold">오픈소스</h1>
         <div className="text-xs text-gray-500">* 카드 클릭 시 상세 페이지로 이동</div>
       </div>
 

@@ -425,7 +425,7 @@ export default function OpensourceDetail() {
               <ArrowLeft className="w-4 h-4" />
               Dashboard
             </Link>
-            <h1 className="text-2xl font-bold">Open Source Detail</h1>
+            <h1 className="text-2xl font-bold">오픈소스 세부내용</h1>
           </div>
         </div>
 
