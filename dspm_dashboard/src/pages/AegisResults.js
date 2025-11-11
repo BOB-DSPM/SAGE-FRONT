@@ -2,7 +2,51 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { aegisApi } from '../services/aegisApi';
-import { AlertTriangle, CheckCircle, XCircle, Info, ChevronLeft, ChevronRight, RefreshCw, X, Clock } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Info,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  X,
+  Clock,
+} from 'lucide-react';
+
+/**
+ * 카테고리 한글 패치
+ *  - public: 고유식별정보, 민감정보가 아닌 개인정보
+ *  - sensitive: 민감정보
+ *  - identifiers: 고유식별정보
+ *  - none: 개인정보 미포함 데이터
+ */
+const CATEGORY_META = {
+  sensitive: {
+    key: 'sensitive',
+    label: '민감정보',
+    badge: 'bg-red-100 text-red-800 border-red-300',
+    icon: <AlertTriangle className="w-4 h-4 text-red-600" />,
+  },
+  public: {
+    key: 'public',
+    label: '고유식별·민감 아님(일반 개인정보)',
+    badge: 'bg-orange-100 text-orange-800 border-orange-300',
+    icon: <CheckCircle className="w-4 h-4 text-orange-600" />,
+  },
+  identifiers: {
+    key: 'identifiers',
+    label: '고유식별정보',
+    badge: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+    icon: <Info className="w-4 h-4 text-yellow-400" />,
+  },
+  none: {
+    key: 'none',
+    label: '개인정보 미포함',
+    badge: 'bg-green-100 text-green-800 border-green-300',
+    icon: <XCircle className="w-4 h-4 text-green-600" />,
+  },
+};
 
 const AegisResults = () => {
   const location = useLocation();
@@ -43,7 +87,7 @@ const AegisResults = () => {
       identifiers: 0,
     };
 
-    filteredItems.forEach(item => {
+    filteredItems.forEach((item) => {
       const category = item.category || 'none';
       if (categories.hasOwnProperty(category)) {
         categories[category]++;
@@ -63,26 +107,25 @@ const AegisResults = () => {
         matched_ids: [],
         matched_files: [],
         rds_ids_checked: [],
-        not_found_ids: []
+        not_found_ids: [],
       });
       return;
     }
 
     const s3Matches = crossCheckReport.s3_scan.matches;
-    
+
     const selectedBuckets = new Set(
-      selectedItems
-        ?.filter(item => item.type === 's3')
-        .map(item => item.name) || []
+      selectedItems?.filter((item) => item.type === 's3').map((item) => item.name) || []
     );
 
-    const filteredMatchedFiles = s3Matches.matched_files?.filter(file => {
-      return selectedBuckets.has(file.bucket);
-    }) || [];
+    const filteredMatchedFiles =
+      s3Matches.matched_files?.filter((file) => {
+        return selectedBuckets.has(file.bucket);
+      }) || [];
 
     const filteredFoundIds = new Set();
-    filteredMatchedFiles.forEach(file => {
-      file.found_ids?.forEach(id => filteredFoundIds.add(id));
+    filteredMatchedFiles.forEach((file) => {
+      file.found_ids?.forEach((id) => filteredFoundIds.add(id));
     });
 
     setRetentionViolations({
@@ -92,7 +135,7 @@ const AegisResults = () => {
       rds_ids_checked: s3Matches.rds_ids_checked || [],
       not_found_ids: s3Matches.not_found_ids || [],
       total_matched_ids: s3Matches.found_ids?.length || 0,
-      total_matched_files: s3Matches.matched_files?.length || 0
+      total_matched_files: s3Matches.matched_files?.length || 0,
     });
   };
 
@@ -138,7 +181,7 @@ const AegisResults = () => {
     if (!autoRefresh || !isAnalyzing) return;
 
     const countdownInterval = setInterval(() => {
-      setCountdown(prev => {
+      setCountdown((prev) => {
         if (prev <= 1) return 10;
         return prev - 1;
       });
@@ -189,17 +232,17 @@ const AegisResults = () => {
       const allItems = await fetchAllItems();
 
       let baseFiltered = allItems;
-      
+
       if (sourceNames.length > 0) {
-        baseFiltered = allItems.filter(item => {
+        baseFiltered = allItems.filter((item) => {
           const itemSource = item.source || '';
-          return sourceNames.some(name => itemSource.includes(name));
+          return sourceNames.some((name) => itemSource.includes(name));
         });
       }
 
       let resourceFiltered = baseFiltered;
       if (selectedResource) {
-        resourceFiltered = baseFiltered.filter(item => {
+        resourceFiltered = baseFiltered.filter((item) => {
           const itemSource = item.source || '';
           return itemSource.includes(selectedResource);
         });
@@ -214,7 +257,7 @@ const AegisResults = () => {
 
       let displayFiltered = resourceFiltered;
       if (selectedCategory) {
-        displayFiltered = resourceFiltered.filter(item => item.category === selectedCategory);
+        displayFiltered = resourceFiltered.filter((item) => item.category === selectedCategory);
       }
 
       setTotalItems(displayFiltered.length);
@@ -230,7 +273,6 @@ const AegisResults = () => {
         setIsAnalyzing(false);
         setAutoRefresh(false);
       }
-
     } catch (err) {
       console.error('데이터 로드 실패:', err);
       setError(err.message);
@@ -249,28 +291,15 @@ const AegisResults = () => {
   };
 
   const getCategoryColor = (category) => {
-    const colors = {
-      'sensitive': 'bg-red-100 text-red-800 border-red-300',
-      'public': 'bg-orange-100 text-orange-800 border-orange-300',
-      'identifiers': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      'none': 'bg-green-100 text-green-800 border-green-300',
-    };
-    return colors[category] || colors['none'];
+    return CATEGORY_META[category]?.badge || CATEGORY_META.none.badge;
   };
 
   const getCategoryIcon = (category) => {
-    switch (category) {
-      case 'sensitive':
-        return <AlertTriangle className="w-4 h-4 text-red-600 " />;
-      case 'public':
-        return <CheckCircle className="w-4 h-4 text-orange-600" />;
-      case 'identifiers':
-        return <Info className="w-4 h-4 text-yellow-400 " />;
-      case 'none':
-        return <XCircle className="w-4 h-4 text-green-600" />;
-      default:
-        return <XCircle className="w-4 h-4" />;
-    }
+    return CATEGORY_META[category]?.icon || CATEGORY_META.none.icon;
+  };
+
+  const getCategoryLabel = (category) => {
+    return CATEGORY_META[category]?.label || CATEGORY_META.none.label;
   };
 
   const handleItemClick = (item) => {
@@ -311,17 +340,13 @@ const AegisResults = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">데이터 위협 분석 결과</h2>
-            <p className="text-gray-600 mt-1">
-              분석 시작: {new Date(timestamp).toLocaleString('ko-KR')}
-            </p>
+            <p className="text-gray-600 mt-1">분석 시작: {new Date(timestamp).toLocaleString('ko-KR')}</p>
             {isAnalyzing ? (
               <p className="text-sm text-blue-600 mt-2">
                 🔍 분석 진행 중... {autoRefresh && `(${countdown}초 후 자동 새로고침)`}
               </p>
             ) : (
-              <p className="text-sm text-green-600 mt-2">
-                ✓ 분석 완료
-              </p>
+              <p className="text-sm text-green-600 mt-2">✓ 분석 완료</p>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -350,9 +375,7 @@ const AegisResults = () => {
               <button
                 onClick={() => handleResourceFilter(null)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  !selectedResource
-                    ? 'bg-primary-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  !selectedResource ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 전체 ({services.length}개)
@@ -397,7 +420,7 @@ const AegisResults = () => {
             >
               <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
                 {getCategoryIcon(category)}
-                <span className="capitalize">{category}</span>
+                <span>{getCategoryLabel(category)}</span>
               </div>
               <div className="text-3xl font-bold text-gray-900">{count}</div>
             </div>
@@ -414,17 +437,17 @@ const AegisResults = () => {
                 <Clock className="w-4 h-4 text-purple-600" />
                 <span>보존기간 만료</span>
               </div>
-              <div className={`text-3xl font-bold ${retentionViolations.count > 0 ? 'text-red-900' : 'text-gray-900'}`}>
+              <div
+                className={`text-3xl font-bold ${
+                  retentionViolations.count > 0 ? 'text-red-900' : 'text-gray-900'
+                }`}
+              >
                 {retentionViolations.count}
               </div>
               {retentionViolations.count > 0 ? (
-                <div className="mt-2 text-xs text-red-600 font-semibold">
-                  ⚠️ 위반 발견
-                </div>
+                <div className="mt-2 text-xs text-red-600 font-semibold">⚠️ 위반 발견</div>
               ) : (
-                <div className="mt-2 text-xs text-green-600">
-                  ✓ 정상
-                </div>
+                <div className="mt-2 text-xs text-green-600">✓ 정상</div>
               )}
             </div>
           )}
@@ -437,9 +460,7 @@ const AegisResults = () => {
             <div className="animate-spin text-2xl">⏳</div>
             <div>
               <p className="font-medium text-blue-900">분석이 진행 중입니다</p>
-              <p className="text-sm text-blue-700 mt-1">
-                데이터를 스캔하고 민감 정보를 탐지하는 중입니다. 잠시만 기다려주세요.
-              </p>
+              <p className="text-sm text-blue-700 mt-1">데이터를 스캔하고 민감 정보를 탐지하는 중입니다. 잠시만 기다려주세요.</p>
             </div>
           </div>
         </div>
@@ -454,9 +475,7 @@ const AegisResults = () => {
       {!isAnalyzing && (
         <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-6 border-b">
-            <h3 className="text-lg font-semibold text-gray-900">
-              검출된 항목 ({totalItems}개)
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-900">검출된 항목 ({totalItems}개)</h3>
           </div>
 
           {isLoading ? (
@@ -477,26 +496,24 @@ const AegisResults = () => {
                         <div className="flex items-center gap-3 mb-2">
                           <h4 className="font-medium text-gray-900">{item.file}</h4>
                           {item.category && (
-                            <span className={`px-2 py-1 rounded text-xs font-medium border ${getCategoryColor(item.category)}`}>
-                              {item.category}
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium border ${getCategoryColor(
+                                item.category
+                              )}`}
+                            >
+                              {getCategoryLabel(item.category)}
                             </span>
                           )}
                           {item.type && (
-                            <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                              {item.type}
-                            </span>
+                            <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">{item.type}</span>
                           )}
                         </div>
 
                         {item.source && (
-                          <p className="text-sm text-gray-600 mb-2">
-                            소스: {item.source}
-                          </p>
+                          <p className="text-sm text-gray-600 mb-2">소스: {item.source}</p>
                         )}
 
-                        {item.reason && (
-                          <p className="text-sm text-gray-700">{item.reason}</p>
-                        )}
+                        {item.reason && <p className="text-sm text-gray-700">{item.reason}</p>}
 
                         {item.ai_hits && item.ai_hits.length > 0 && (
                           <div className="mt-3">
@@ -522,20 +539,19 @@ const AegisResults = () => {
 
                         {item.stats && (
                           <div className="flex gap-4 mt-3 text-sm text-gray-600">
-                            {item.stats.rows_scanned && (
-                              <span>스캔: {item.stats.rows_scanned}행</span>
-                            )}
+                            {item.stats.rows_scanned && <span>스캔: {item.stats.rows_scanned}행</span>}
                             {item.stats.total_entities && (
                               <span>엔티티: {item.stats.total_entities}개</span>
                             )}
                             {item.ai_hits && item.ai_hits.length > 0 && (
-                              <span>AI 탐지: {item.ai_hits.length}개</span>
+                              <span>AI 탐지: {item.ai_hits.length}건</span>
                             )}
                           </div>
                         )}
                       </div>
 
-                      {(Object.keys(item.entities || {}).length > 0 || (item.ai_hits && item.ai_hits.length > 0)) && (
+                      {(Object.keys(item.entities || {}).length > 0 ||
+                        (item.ai_hits && item.ai_hits.length > 0)) && (
                         <div className="ml-4 text-right">
                           {Object.keys(item.entities || {}).length > 0 && (
                             <span className="text-sm text-gray-600 block">
@@ -543,9 +559,7 @@ const AegisResults = () => {
                             </span>
                           )}
                           {item.ai_hits && item.ai_hits.length > 0 && (
-                            <span className="text-sm text-blue-600 block mt-1">
-                              AI 탐지 {item.ai_hits.length}건
-                            </span>
+                            <span className="text-sm text-blue-600 block mt-1">AI 탐지 {item.ai_hits.length}건</span>
                           )}
                         </div>
                       )}
@@ -561,14 +575,14 @@ const AegisResults = () => {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
                       className="p-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <ChevronLeft className="w-5 h-5" />
                     </button>
                     <button
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                       disabled={currentPage === totalPages}
                       className="p-2 rounded-lg border hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -579,19 +593,17 @@ const AegisResults = () => {
               )}
             </>
           ) : (
-            <div className="p-12 text-center text-gray-500">
-              검출된 항목이 없습니다.
-            </div>
+            <div className="p-12 text-center text-gray-500">검출된 항목이 없습니다.</div>
           )}
         </div>
       )}
 
       {selectedItem && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
           onClick={() => setSelectedItem(null)}
         >
-          <div 
+          <div
             className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-auto m-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -602,8 +614,8 @@ const AegisResults = () => {
                   <p className="text-sm text-gray-600 mt-1">소스: {selectedItem.source}</p>
                 )}
               </div>
-              <button 
-                onClick={() => setSelectedItem(null)} 
+              <button
+                onClick={() => setSelectedItem(null)}
                 className="text-gray-500 hover:text-gray-700 transition-colors"
               >
                 <X className="w-6 h-6" />
@@ -624,8 +636,12 @@ const AegisResults = () => {
                     <div>
                       <dt className="text-sm text-gray-600">카테고리</dt>
                       <dd>
-                        <span className={`px-2 py-1 rounded text-xs font-medium border ${getCategoryColor(selectedItem.category)}`}>
-                          {selectedItem.category}
+                        <span
+                          className={`px-2 py-1 rounded text-xs font-medium border ${getCategoryColor(
+                            selectedItem.category
+                          )}`}
+                        >
+                          {getCategoryLabel(selectedItem.category)}
                         </span>
                       </dd>
                     </div>
@@ -633,19 +649,25 @@ const AegisResults = () => {
                   {selectedItem.stats && selectedItem.stats.rows_scanned && (
                     <div>
                       <dt className="text-sm text-gray-600">스캔한 행 수</dt>
-                      <dd className="text-sm text-gray-900">{selectedItem.stats.rows_scanned.toLocaleString()}</dd>
+                      <dd className="text-sm text-gray-900">
+                        {selectedItem.stats.rows_scanned.toLocaleString()}
+                      </dd>
                     </div>
                   )}
                   {selectedItem.stats && selectedItem.stats.total_entities && (
                     <div>
                       <dt className="text-sm text-gray-600">탐지된 엔티티</dt>
-                      <dd className="text-sm text-gray-900">{selectedItem.stats.total_entities.toLocaleString()}</dd>
+                      <dd className="text-sm text-gray-900">
+                        {selectedItem.stats.total_entities.toLocaleString()}
+                      </dd>
                     </div>
                   )}
                   {selectedItem.ai_hits && (
                     <div>
                       <dt className="text-sm text-gray-600">AI 탐지 건수</dt>
-                      <dd className="text-sm text-gray-900">{selectedItem.ai_hits.length.toLocaleString()}</dd>
+                      <dd className="text-sm text-gray-900">
+                        {selectedItem.ai_hits.length.toLocaleString()}
+                      </dd>
                     </div>
                   )}
                 </dl>
@@ -654,27 +676,28 @@ const AegisResults = () => {
               {selectedItem.reason && (
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">분류 이유</h4>
-                  <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg">
-                    {selectedItem.reason}
-                  </p>
+                  <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg">{selectedItem.reason}</p>
                 </div>
               )}
 
               {selectedItem.ai_hits && selectedItem.ai_hits.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-3">AI 탐지 결과 ({selectedItem.ai_hits.length}건)</h4>
+                  <h4 className="font-semibold text-gray-900 mb-3">
+                    AI 탐지 결과 ({selectedItem.ai_hits.length}건)
+                  </h4>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {selectedItem.ai_hits.map((hit, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors">
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors"
+                      >
                         <div className="flex items-center gap-3">
                           <span className="px-2 py-1 bg-gray-200 text-gray-900 rounded text-xs font-semibold min-w-[80px] text-center">
                             {hit.entity}
                           </span>
                           <span className="text-sm text-gray-900 font-mono">{hit.text}</span>
                         </div>
-                        <span className="text-xs text-gray-600">
-                          신뢰도: {(hit.score * 100).toFixed(1)}%
-                        </span>
+                        <span className="text-xs text-gray-600">신뢰도: {(hit.score * 100).toFixed(1)}%</span>
                       </div>
                     ))}
                   </div>
@@ -686,12 +709,15 @@ const AegisResults = () => {
                   <h4 className="font-semibold text-gray-900 mb-3">탐지된 엔티티</h4>
                   <div className="space-y-3">
                     {Object.entries(selectedItem.entities).map(([type, entityData]) => {
-                      const valueArray = entityData?.values && Array.isArray(entityData.values) 
-                        ? entityData.values 
-                        : (Array.isArray(entityData) ? entityData : []);
-                      
+                      const valueArray =
+                        entityData?.values && Array.isArray(entityData.values)
+                          ? entityData.values
+                          : Array.isArray(entityData)
+                          ? entityData
+                          : [];
+
                       if (valueArray.length === 0) return null;
-                      
+
                       return (
                         <div key={type} className="border rounded-lg p-4">
                           <div className="flex items-center justify-between mb-2">
@@ -709,7 +735,9 @@ const AegisResults = () => {
                             ))}
                             {valueArray.length > 10 && (
                               <button
-                                onClick={() => setExpandedEntityModal({ type, values: valueArray, count: valueArray.length })}
+                                onClick={() =>
+                                  setExpandedEntityModal({ type, values: valueArray, count: valueArray.length })
+                                }
                                 className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition-colors"
                               >
                                 +{valueArray.length - 10}개 더 보기
@@ -728,11 +756,11 @@ const AegisResults = () => {
       )}
 
       {expandedEntityModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" 
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]"
           onClick={() => setExpandedEntityModal(null)}
         >
-          <div 
+          <div
             className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-auto m-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -741,8 +769,8 @@ const AegisResults = () => {
                 <h3 className="text-lg font-semibold text-gray-900">{expandedEntityModal.type}</h3>
                 <p className="text-sm text-gray-600 mt-1">총 {expandedEntityModal.count}개</p>
               </div>
-              <button 
-                onClick={() => setExpandedEntityModal(null)} 
+              <button
+                onClick={() => setExpandedEntityModal(null)}
                 className="text-gray-500 hover:text-gray-700 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -750,10 +778,7 @@ const AegisResults = () => {
             </div>
             <div className="flex flex-wrap gap-2">
               {expandedEntityModal.values.map((value, idx) => (
-                <span
-                  key={idx}
-                  className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded text-sm font-mono"
-                >
+                <span key={idx} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded text-sm font-mono">
                   {value}
                 </span>
               ))}
@@ -763,11 +788,11 @@ const AegisResults = () => {
       )}
 
       {showRetentionModal && retentionViolations && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" 
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]"
           onClick={() => setShowRetentionModal(false)}
         >
-          <div 
+          <div
             className="bg-white rounded-lg p-6 max-w-6xl w-full max-h-[80vh] overflow-auto m-4"
             onClick={(e) => e.stopPropagation()}
           >
@@ -779,12 +804,13 @@ const AegisResults = () => {
                 </p>
                 {retentionViolations.total_matched_files > retentionViolations.matched_files.length && (
                   <p className="text-sm text-orange-600 mt-1">
-                    ※ 전체 {retentionViolations.total_matched_files}개 파일 중 선택한 버킷의 {retentionViolations.matched_files.length}개 파일만 표시
+                    ※ 전체 {retentionViolations.total_matched_files}개 파일 중 선택한 버킷의{' '}
+                    {retentionViolations.matched_files.length}개 파일만 표시
                   </p>
                 )}
               </div>
-              <button 
-                onClick={() => setShowRetentionModal(false)} 
+              <button
+                onClick={() => setShowRetentionModal(false)}
                 className="text-gray-500 hover:text-gray-700 transition-colors"
               >
                 <X className="w-6 h-6" />
@@ -858,7 +884,7 @@ const AegisResults = () => {
                           </span>
                         </div>
                       </div>
-                      
+
                       <div className="p-4">
                         <div className="overflow-x-auto">
                           <table className="min-w-full divide-y divide-gray-200">
@@ -881,9 +907,7 @@ const AegisResults = () => {
                                   <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900">
                                     {match.id}
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-gray-600">
-                                    {match.row_number}
-                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-600">{match.row_number}</td>
                                   <td className="px-4 py-3">
                                     <div className="text-xs text-gray-700 font-mono">
                                       {Object.entries(match.row_data).map(([key, value]) => (
@@ -918,10 +942,7 @@ const AegisResults = () => {
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex flex-wrap gap-2">
                     {retentionViolations.not_found_ids.map((id) => (
-                      <span
-                        key={id}
-                        className="px-3 py-1.5 bg-green-100 text-green-800 rounded font-mono text-sm"
-                      >
+                      <span key={id} className="px-3 py-1.5 bg-green-100 text-green-800 rounded font-mono text-sm">
                         ID: {id}
                       </span>
                     ))}
