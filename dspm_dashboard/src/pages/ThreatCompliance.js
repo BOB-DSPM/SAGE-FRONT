@@ -21,7 +21,7 @@ const ThreatCompliance = () => {
   const [progress, setProgress] = useState({ total: 0, executed: 0 });
   const [expandedText, setExpandedText] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage] = useState(30);
   const [selectedThreatGroup, setSelectedThreatGroup] = useState('전체');
   const [threatGroups, setThreatGroups] = useState([]);
 
