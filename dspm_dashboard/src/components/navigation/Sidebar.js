@@ -1,16 +1,12 @@
-// src/components/navigation/Sidebar.js
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 
 const Sidebar = ({ tabs, activeTab, setActiveTab }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [expandedMenus, setExpandedMenus] = useState({ audit: true }); // 기본적으로 audit 열림
+  const [expandedMenus, setExpandedMenus] = useState({ audit: true });
 
   const toggleMenu = (menuKey) => {
-    setExpandedMenus(prev => ({
-      ...prev,
-      [menuKey]: !prev[menuKey]
-    }));
+    setExpandedMenus(prev => ({ ...prev, [menuKey]: !prev[menuKey] }));
   };
 
   return (
@@ -22,20 +18,20 @@ const Sidebar = ({ tabs, activeTab, setActiveTab }) => {
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="p-2 w-8 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center"
           >
-            {isCollapsed ? (
-              <ChevronRight className="w-5 h-5 text-gray-600" />
-            ) : (
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
-            )}
+            {isCollapsed
+              ? <ChevronRight className="w-5 h-5 text-gray-600" />
+              : <ChevronLeft className="w-5 h-5 text-gray-600" />
+            }
           </button>
         </div>
 
         {/* 메뉴 아이템 */}
         {tabs.map((tab) => {
           const Icon = tab.icon;
-          
-          // 부모 메뉴 (아코디언)
+
+          // 아코디언(부모)
           if (tab.children) {
+            const opened = !!expandedMenus[tab.id];
             return (
               <div key={tab.id}>
                 <button
@@ -47,40 +43,27 @@ const Sidebar = ({ tabs, activeTab, setActiveTab }) => {
                       toggleMenu(tab.id);
                     }
                   }}
-                  className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-4 py-3 text-sm font-medium text-left ${
-                    expandedMenus[tab.id]
-                      ? 'text-gray-900 bg-gray-50'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-4 py-3 text-sm font-medium text-left ${opened ? 'text-gray-900 bg-gray-50' : 'sidebar-hover'}`}
                   title={isCollapsed ? tab.name : ''}
                 >
                   <div className={`flex items-center ${isCollapsed ? '' : 'space-x-2'}`}>
                     <Icon className="w-5 h-5" />
                     {!isCollapsed && <span>{tab.name}</span>}
                   </div>
-                  {!isCollapsed && (
-                    expandedMenus[tab.id] ? (
-                      <ChevronDown className="w-4 h-4" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4" />
-                    )
-                  )}
+                  {!isCollapsed && <ChevronDown className={`w-4 h-4 transition-transform ${opened ? '' : '-rotate-90'}`} />}
                 </button>
 
                 {/* 하위 메뉴 */}
-                {!isCollapsed && expandedMenus[tab.id] && (
+                {!isCollapsed && opened && (
                   <div className="bg-gray-50">
                     {tab.children.map((child) => {
                       const ChildIcon = child.icon;
+                      const active = activeTab === child.id;
                       return (
                         <button
                           key={child.id}
                           onClick={() => setActiveTab(child.id)}
-                          className={`w-full flex items-center space-x-2 pl-11 pr-4 py-2.5 text-sm text-left ${
-                            activeTab === child.id
-                              ? 'bg-primary-100 text-primary-600 border-r-4 border-primary-500 font-medium'
-                              : 'text-gray-600 hover:bg-gray-100'
-                          }`}
+                          className={`w-full flex items-center space-x-2 pl-11 pr-4 py-2.5 text-sm text-left ${active ? 'sidebar-active font-medium' : 'sidebar-hover'}`}
                         >
                           {ChildIcon && <ChildIcon className="w-4 h-4" />}
                           <span>{child.name}</span>
@@ -94,15 +77,12 @@ const Sidebar = ({ tabs, activeTab, setActiveTab }) => {
           }
 
           // 일반 메뉴
+          const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-2'} px-4 py-3 text-sm font-medium text-left ${
-                activeTab === tab.id
-                  ? 'bg-primary-100 text-primary-600 border-r-4 border-primary-500'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
+              className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-2'} px-4 py-3 text-sm font-medium text-left ${active ? 'sidebar-active' : 'sidebar-hover'}`}
               title={isCollapsed ? tab.name : ''}
             >
               <Icon className="w-5 h-5" />
