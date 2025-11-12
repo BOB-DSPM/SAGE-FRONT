@@ -44,7 +44,7 @@ const tabs = [
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
   // { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 
-  // { id: 'opensource', name: '오픈소스', icon: Boxes },
+  { id: 'opensource', name: '오픈소스', icon: Boxes },
 ];
 
 const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {

@@ -18,8 +18,6 @@ import {
   ChevronDown,
   GitBranch,
   Layers,
-  Eye,
-  EyeOff,
   ShieldAlert,
 } from 'lucide-react';
 import { useLineage } from '../hooks/useLineage';
@@ -64,9 +62,6 @@ const Lineage = () => {
   // 노드 상세 패널/데이터
   const [showPanel, setShowPanel] = useState(false);
   const [selectedNodeData, setSelectedNodeData] = useState(null);
-
-  // PII 값 표시 토글
-  const [revealPII, setRevealPII] = useState(false);
 
   // 🔴 PII 수동 오버라이드(노드별)
   // key: node.id 또는 dataArtifact의 경우 data:<s3-uri>
@@ -1555,17 +1550,6 @@ const Lineage = () => {
                           <ShieldAlert className="w-4 h-4 text-red-600" />
                         </h4>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setRevealPII((v) => !v)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs border rounded hover:bg-gray-50"
-                          title={revealPII ? '가려보기' : '일부 보기'}
-                        >
-                          {revealPII ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                          {revealPII ? 'Mask' : 'Unmask'}
-                        </button>
-                        {/* 수동 오버라이드 버튼 숨김 */}
-                      </div>
                     </div>
 
                     {(() => {
@@ -1585,7 +1569,7 @@ const Lineage = () => {
                       return (
                         <div className="space-y-3 pl-3">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">Has PII</span>
+                            <span className="text-xs text-gray-500">PII</span>
                             <span
                               className={`px-2 py-0.5 text-xs rounded-full border ${
                                 effectiveHasPII
@@ -1655,26 +1639,15 @@ const Lineage = () => {
                             <div>
                               <div className="text-xs text-gray-500 mb-1">Samples</div>
                               <ul className="space-y-1">
-                                {effSamples.slice(0, 5).map((v, i) => {
-                                  const masked =
-                                    typeof v === 'string' && !revealPII
-                                      ? v.replace(/[\S]/g, (c, idx) => (idx % 3 === 0 ? c : '•'))
-                                      : v;
-                                  return (
-                                    <li
-                                      key={`sv-${i}`}
-                                      className="font-mono text-xs break-all bg-gray-50 border border-gray-200 rounded px-2 py-1"
-                                    >
-                                      {masked}
-                                    </li>
-                                  );
-                                })}
+                                {effSamples.slice(0, 5).map((v, i) => (
+                                  <li
+                                    key={`sv-${i}`}
+                                    className="font-mono text-xs break-all bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                                  >
+                                    {v}
+                                  </li>
+                                ))}
                               </ul>
-                              {!revealPII && (
-                                <div className="text-[11px] text-gray-500 mt-1">
-                                  일부 문자는 마스킹되어 표시됩니다.
-                                </div>
-                              )}
                             </div>
                           )}
 
