@@ -84,7 +84,7 @@ const ResourceCard = ({ resource, onClick, isSelected, isDetailViewing }) => {
     <div
       onClick={onClick}
       className={`
-        border rounded-lg p-4 cursor-pointer transition-all
+        border-[3px] border-gray-300 rounded-lg p-4 cursor-pointer transition-all
         ${isDetailViewing 
           ? 'bg-blue-50 border-blue-500 border-2 shadow-lg ring-2 ring-blue-200' 
           : isSelected
@@ -105,7 +105,7 @@ const ResourceCard = ({ resource, onClick, isSelected, isDetailViewing }) => {
         </div>
       </div>
 
-      <h4 className={`font-semibold mb-2 break-words ${
+      <h4 className={`font-semibold mb-2 break-words text-[19px] ${
         isDetailViewing ? 'text-blue-900' : 'text-gray-900'
       }`}>
         {resource.name}

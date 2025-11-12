@@ -9,7 +9,7 @@ const AreaChartComponent = ({ data }) => (
       <YAxis />
       <Tooltip />
       <Area type="monotone" dataKey="opened" stackId="1" stroke="#ef4444" fill="#fecaca" />
-      <Area type="monotone" dataKey="resolved" stackId="1" stroke="#22c55e" fill="#bbf7d0" />
+      <Area type="monotone" dataKey="resolved" stackId="1" stroke="#008d34ff" fill="#00a339ff" />
     </AreaChart>
   </ResponsiveContainer>
 );

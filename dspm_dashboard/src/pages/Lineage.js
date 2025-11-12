@@ -78,6 +78,14 @@ const Lineage = () => {
   // value: { expired: boolean, matchedIds: string[], sources: { ... }, policyName?, policyUntil? }
   const [retentionOverrides, setRetentionOverrides] = useState({});
 
+  // ✅ 쇼케이스 기본 규칙: 스키마 목록의 1,2,3번째를 기억해 자동 강조
+  // { first: '...', second: '...', third: '...' }
+  const [showcaseDefaults, setShowcaseDefaults] = useState({
+    first: null,
+    second: null,
+    third: null,
+  });
+
   // 선택 노드에 대한 오버라이드 키 생성
   const getOverrideKey = (nodeLike) => {
     const n = nodeLike?.data?.nodeData || nodeLike?.nodeData || nodeLike || {};
@@ -168,7 +176,7 @@ const Lineage = () => {
   // 스타일
   const getNodeStyle = (type, status, isSelected, isConnected, isDimmed) => {
     let background = '#f3f4f6';
-    let border = '2px solid #9ca3af';
+    let border = 'px solid #9ca3af';
     let opacity = 1;
     let boxShadow = 'none';
 
@@ -292,6 +300,57 @@ const Lineage = () => {
 
   const getPipelineStepOrder = () => {
     return ['Extract', 'Validate', 'Preprocess', 'Train', 'Evaluate', 'ModelQualityCheck'];
+  };
+
+  // ✅ 스키마 목록이 로드되면 쇼케이스 기본 규칙을 기억
+  useEffect(() => {
+    if (Array.isArray(schemas) && schemas.length > 0) {
+      setShowcaseDefaults({
+        first: schemas[0]?.name || null,
+        second: schemas[1]?.name || null,
+        third: schemas[2]?.name || null,
+      });
+    } else {
+      setShowcaseDefaults({ first: null, second: null, third: null });
+    }
+  }, [schemas]);
+
+  // URI가 특정 데이터셋 이름과 매치되는지 판단 (폴더/파일명 포함 매치)
+  const uriMatchesDatasetName = (uriRaw, datasetName) => {
+    if (!uriRaw || !datasetName) return false;
+    const uri = String(uriRaw).toLowerCase();
+    const name = String(datasetName).toLowerCase();
+
+    if (!name) return false;
+    if (uri === name) return true;
+    if (uri.includes(`/${name}/`)) return true;
+    if (uri.endsWith(`/${name}`)) return true;
+    if (uri.endsWith(`/${name}.csv`)) return true;
+    if (uri.endsWith(`/${name}.parquet`)) return true;
+    if (uri.includes(`/${name}_`)) return true;
+    if (uri.includes(`_${name}.`)) return true;
+
+    // evaluation 보정
+    if (name === 'evaluation') {
+      if (uri.includes('/eval/')) return true;
+      if (uri.endsWith('/eval')) return true;
+      if (uri.includes('_eval')) return true;
+      if (uri.includes('evaluate')) return true;
+    }
+    return false;
+  };
+
+  // 쇼케이스 플래그 계산(PII/Retention) - 패널 폴백에서도 사용
+  const computeShowcaseFlags = (uri) => {
+    const res = { pii: false, retention: false };
+    if (!uri) return res;
+    if (showcaseDefaults.first && uriMatchesDatasetName(uri, showcaseDefaults.first)) res.pii = true;
+    if (showcaseDefaults.second && uriMatchesDatasetName(uri, showcaseDefaults.second)) res.retention = true;
+    if (showcaseDefaults.third && uriMatchesDatasetName(uri, showcaseDefaults.third)) {
+      res.pii = true;
+      res.retention = true;
+    }
+    return res;
   };
 
   // 연결 탐색
@@ -563,6 +622,26 @@ const Lineage = () => {
         return orderA - orderB;
       });
 
+      // 쇼케이스 기본 규칙으로 플래그 추론
+      const defaultFlagsForUri = (uri) => {
+        const res = { pii: false, retention: false };
+        if (!uri) return res;
+        // 1번째: PII
+        if (showcaseDefaults.first && uriMatchesDatasetName(uri, showcaseDefaults.first)) {
+          res.pii = true;
+        }
+        // 2번째: Retention
+        if (showcaseDefaults.second && uriMatchesDatasetName(uri, showcaseDefaults.second)) {
+          res.retention = true;
+        }
+        // 3번째: PII + Retention
+        if (showcaseDefaults.third && uriMatchesDatasetName(uri, showcaseDefaults.third)) {
+          res.pii = true;
+          res.retention = true;
+        }
+        return res;
+      };
+
       sortedProcessNodes.forEach((processNode) => {
         const status = processNode.run?.status || 'Unknown';
 
@@ -617,8 +696,15 @@ const Lineage = () => {
               const dataNodeId = `data:${uri}`;
               if (dataNodeMap.has(dataNodeId) && !newNodes.find((n) => n.id === dataNodeId)) {
                 const dataNode = dataNodeMap.get(dataNodeId);
-                const pii = hasPIIFlag({ data: { nodeData: dataNode } });
-                const retention = hasRetentionExpired({ data: { nodeData: dataNode } });
+
+                // 수동 오버라이드/메타
+                const metaPII = extractPIIMeta({ data: { nodeData: dataNode } });
+                const metaRet = extractRetentionMeta({ data: { nodeData: dataNode } });
+
+                // 쇼케이스 기본 규칙 적용 (오버라이드가 없을 때 보강)
+                const defaults = defaultFlagsForUri(uri);
+                const pii = metaPII.hasPII || defaults.pii;
+                const retention = metaRet.expired || defaults.retention;
 
                 newNodes.push({
                   id: dataNodeId,
@@ -704,9 +790,17 @@ const Lineage = () => {
                 //  - PII만: 빨강
                 //  - 보존만료만: 보라
                 //  - 둘 다: 보라 + 점선 (라벨로 PII+EXP)
-                const strokeBase = pii && retention ? '#7c3aed' : retention ? '#7c3aed' : pii ? '#ef4444' : '#0284c7';
+                const strokeBase =
+                  pii && retention
+                    ? '#7c3aed'
+                    : retention
+                    ? '#7c3aed'
+                    : pii
+                    ? '#ef4444'
+                    : '#0284c7';
                 const dashed = pii && retention ? '6,3' : 'none';
-                const label = pii && retention ? 'PII+EXP' : retention ? 'EXP' : pii ? 'PII' : undefined;
+                const label =
+                  pii && retention ? 'PII+EXP' : retention ? 'EXP' : pii ? 'PII' : undefined;
 
                 newEdges.push({
                   id: `edge-data-${dataNodeId}-${processNode.id}`,
@@ -780,7 +874,7 @@ const Lineage = () => {
         return { nodes: newNodes, edges: newEdges };
       }
     },
-    [piiOverrides, retentionOverrides] // 오버라이드 변화 시 스타일 갱신
+    [piiOverrides, retentionOverrides, showcaseDefaults] // 오버라이드 & 쇼케이스 기본 규칙 변화 시 반영
   );
 
   // 데이터셋 하이라이트 (기존 로직 유지)
@@ -1021,27 +1115,27 @@ const Lineage = () => {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* 헤더 */}
-      <div className="h-16 bg-white border-b border-gray-200 flex items-center px-6 shadow-sm flex-shrink-0">
-        <h1 className="text-2xl font-bold text-gray-800 mr-6">데이터 흐름추적</h1>
+      <div className="h-16 bg-white border-b border-gray-400 flex items-center px-6 shadow-sm flex-shrink-0">
+        <h1 className="text-3xl font-bold text-gray-800 mr-6">데이터 라인리지</h1>
 
         {/* 도메인 선택 */}
         <div className="relative mr-4">
           <button
             onClick={() => setShowDomainDropdown(!showDomainDropdown)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-400 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <Database className="w-4 h-4" />
-            <span className="text-sm font-medium">{selectedDomain.name}</span>
+            <span className="text-[20px] font-medium">{selectedDomain.name}</span>
             <ChevronDown className="w-4 h-4" />
           </button>
 
           {showDomainDropdown && (
-            <div className="absolute top-full mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+            <div className="absolute top-full mt-2 w-72 bg-white border border-gray-400 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
               <div
                 onClick={() =>
                   handleDomainSelect({ id: '__all__', name: '전체 도메인', region: 'ap-northeast-2' })
                 }
-                className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer  border-b border-gray-400"
               >
                 <div className="font-medium text-sm">전체 도메인</div>
                 <div className="text-xs text-gray-500 mt-1">모든 파이프라인 ({pipelines.length}개)</div>
@@ -1051,7 +1145,7 @@ const Lineage = () => {
                 <div
                   key={domain.id}
                   onClick={() => handleDomainSelect(domain)}
-                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-400"
                 >
                   <div className="font-medium text-sm">{domain.name}</div>
                   <div className="text-xs text-gray-500 mt-1">
@@ -1087,7 +1181,7 @@ const Lineage = () => {
               </>
             ) : (
               <>
-                <span className="text-sm font-medium max-w-md truncate">
+                <span className="text-[20px] font-medium max-w-md truncate">
                   {selectedPipeline ? selectedPipeline.name : '파이프라인 선택'}
                 </span>
                 <ChevronDown className="w-4 h-4" />
@@ -1096,7 +1190,7 @@ const Lineage = () => {
           </button>
 
           {showDropdown && !loadingPipelines && (
-            <div className="absolute top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+            <div className="absolute top-full mt-2 w-96 bg-white border border-gray-400 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
               {(() => {
                 const list =
                   selectedDomain.id === '__all__'
@@ -1123,7 +1217,7 @@ const Lineage = () => {
                   <div
                     key={pipeline.arn}
                     onClick={() => handlePipelineSelect(pipeline)}
-                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-400"
                   >
                     <div className="font-medium text-sm">{pipeline.name}</div>
                     <div className="text-xs text-gray-500 mt-1">{pipeline.region}</div>
@@ -1146,7 +1240,7 @@ const Lineage = () => {
               }`}
             >
               <GitBranch className="w-4 h-4" />
-              <span className="text-sm font-medium">파이프라인 관점</span>
+              <span className="text-[20px] font-medium">파이프라인 관점</span>
             </button>
             <button
               onClick={() => handleViewModeChange('data')}
@@ -1157,7 +1251,7 @@ const Lineage = () => {
               }`}
             >
               <Layers className="w-4 h-4" />
-              <span className="text-sm font-medium">데이터 관점</span>
+              <span className="text-[20px] font-medium">데이터 관점</span>
             </button>
 
             <div className="relative ml-2">
@@ -1179,7 +1273,7 @@ const Lineage = () => {
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <span className="text-sm font-medium">
+                <span className="text-[20px] font-medium">
                   {selectedSchema ? `데이터셋: ${selectedSchema.name}` : '데이터셋 선택'}
                 </span>
                 <ChevronDown className="w-4 h-4" />
@@ -1275,22 +1369,22 @@ const Lineage = () => {
 
         {/* 상세 패널 */}
         {showPanel && selectedNodeData && (
-          <div className="absolute right-0 top-0 bottom-0 w-96 bg-white border-l border-gray-200 shadow-lg overflow-y-auto z-20">
+          <div className="absolute right-0 top-0 bottom-0 w-[700px] max-w-[85vw] bg-white border-l border-gray-500 shadow-lg overflow-y-auto z-20">
             <div className="p-4">
               <div className="flex items-center justify-between mb-4 pb-3 border-b">
-                <h3 className="text-lg font-bold">Step Details</h3>
+                <h3 className="text-[25px] font-bold">Step Details</h3>
                 <button
                   onClick={() => {
                     setShowPanel(false);
                     onPaneClick();
                   }}
-                  className="p-1 hover:bg-gray-100 rounded"
+                  className="p-1 hover:bg-gray-200 rounded"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-6 text-sm">
+              <div className="space-y-6 text-[20px]">
                 {/* Basic Information */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
@@ -1299,13 +1393,13 @@ const Lineage = () => {
                   </div>
                   <div className="space-y-3 pl-3">
                     <div>
-                      <div className="text-xs text-gray-500 mb-1">Step ID</div>
+                      <div className="text-[15px] text-gray-500 mb-1">Step ID</div>
                       <div className="font-medium break-all">
                         {selectedNodeData.id || selectedNodeData.label}
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 mb-1">Type</div>
+                      <div className="text-[15px] text-gray-500 mb-1">Type</div>
                       <div className="font-medium">
                         {safeValue(selectedNodeData.type || selectedNodeData.stepType)}
                       </div>
@@ -1313,7 +1407,7 @@ const Lineage = () => {
 
                     {selectedNodeData.run?.status && (
                       <div>
-                        <div className="text-xs text-gray-500 mb-1">Status</div>
+                        <div className="text-[15px] text-gray-500 mb-1">Status</div>
                         <div className="flex items-center gap-2">
                           {getStatusIcon(selectedNodeData.run.status)}
                           <span className="font-medium">
@@ -1325,7 +1419,7 @@ const Lineage = () => {
 
                     {selectedNodeData.run?.jobName && (
                       <div>
-                        <div className="text-xs text-gray-500 mb-1">Job Name</div>
+                        <div className="text-[15px] text-gray-500 mb-1">Job Name</div>
                         <div className="font-mono text-xs break-all">
                           {selectedNodeData.run.jobName}
                         </div>
@@ -1333,7 +1427,7 @@ const Lineage = () => {
                     )}
                     {selectedNodeData.run?.jobArn && (
                       <div>
-                        <div className="text-xs text-gray-500 mb-1">Job ARN</div>
+                        <div className="text-[15px] text-gray-500 mb-1">Job ARN</div>
                         <div className="font-mono text-xs break-all text-gray-600">
                           {selectedNodeData.run.jobArn}
                         </div>
@@ -1352,7 +1446,7 @@ const Lineage = () => {
                     <div className="space-y-3 pl-3">
                       {selectedNodeData.run.startTime && (
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">Start Time</div>
+                          <div className="text-[15px] text-gray-500 mb-1">Start Time</div>
                           <div className="font-medium">
                             {new Date(selectedNodeData.run.startTime).toLocaleString('ko-KR', {
                               year: 'numeric',
@@ -1368,7 +1462,7 @@ const Lineage = () => {
                       )}
                       {selectedNodeData.run.endTime && (
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">End Time</div>
+                          <div className="text-[15px] text-gray-500 mb-1">End Time</div>
                           <div className="font-medium">
                             {new Date(selectedNodeData.run.endTime).toLocaleString('ko-KR', {
                               year: 'numeric',
@@ -1384,7 +1478,7 @@ const Lineage = () => {
                       )}
                       {selectedNodeData.run.elapsedSec != null && (
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">Duration</div>
+                          <div className="text-[15px] text-gray-500 mb-1">Duration</div>
                           <div className="font-medium">
                             {formatDuration(selectedNodeData.run.elapsedSec)}
                           </div>
@@ -1470,49 +1564,7 @@ const Lineage = () => {
                           {revealPII ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                           {revealPII ? 'Mask' : 'Unmask'}
                         </button>
-
-                        {/* 수동 오버라이드 버튼 */}
-                        {(() => {
-                          const key = getOverrideKey({ nodeData: selectedNodeData });
-                          const override = piiOverrides[key];
-                          return override?.hasPII ? (
-                            <button
-                              onClick={() =>
-                                setPiiOverrides((prev) => {
-                                  const next = { ...prev };
-                                  delete next[key];
-                                  return next;
-                                })
-                              }
-                              className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
-                              title="이 노드의 PII 강제 표시 해제"
-                            >
-                              강제 해제
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                const now = new Date().toISOString();
-                                setPiiOverrides((prev) => ({
-                                  ...prev,
-                                  [key]: {
-                                    hasPII: true,
-                                    types: ['NAME', 'EMAIL'],
-                                    fields: ['customer_name', 'email'],
-                                    sampleValues: ['홍길동', 'test@example.com'],
-                                    lastScanAt: now,
-                                    scanner: 'Manual-Override',
-                                    riskScore: 80,
-                                  },
-                                }));
-                              }}
-                              className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
-                              title="이 노드를 PII 있음으로 강제 표시"
-                            >
-                              강제로 PII 표시
-                            </button>
-                          );
-                        })()}
+                        {/* 수동 오버라이드 버튼 숨김 */}
                       </div>
                     </div>
 
@@ -1520,18 +1572,28 @@ const Lineage = () => {
                       const { hasPII, types, fields, sampleValues, lastScanAt, scanner, riskScore } =
                         extractPIIMeta({ nodeData: selectedNodeData });
 
+                      // 쇼케이스 규칙 기반 플래그
+                      const flags = computeShowcaseFlags(selectedNodeData.uri);
+                      // 폴백 적용: 메타가 없지만 쇼케이스가 PII라면 임시값 노출
+                      const effectiveHasPII = hasPII || flags.pii;
+                      const effTypes  = (hasPII && types?.length)  ? types  : (flags.pii ? ['NAME', 'EMAIL'] : []);
+                      const effFields = (hasPII && fields?.length) ? fields : (flags.pii ? ['customer_name', 'email'] : []);
+                      const effSamples = (hasPII && sampleValues?.length)
+                        ? sampleValues
+                        : (flags.pii ? ['홍길동', 'test@example.com'] : []);
+
                       return (
                         <div className="space-y-3 pl-3">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500">Has PII</span>
                             <span
                               className={`px-2 py-0.5 text-xs rounded-full border ${
-                                hasPII
+                                effectiveHasPII
                                   ? 'bg-red-50 text-red-700 border-red-200'
                                   : 'bg-green-50 text-green-700 border-green-200'
                               }`}
                             >
-                              {hasPII ? 'Yes' : 'No'}
+                              {effectiveHasPII ? 'Yes' : 'No'}
                             </span>
                             {typeof riskScore === 'number' && (
                               <span className="ml-2 text-xs text-gray-500">
@@ -1549,13 +1611,19 @@ const Lineage = () => {
                                 </span>
                               </span>
                             )}
+                            {/* 쇼케이스 폴백 뱃지 */}
+                            {!hasPII && flags.pii && (
+                              <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full border bg-gray-50 text-gray-600 border-gray-200">
+                                임시(쇼케이스)
+                              </span>
+                            )}
                           </div>
 
-                          {types?.length > 0 && (
+                          {effTypes.length > 0 && (
                             <div>
                               <div className="text-xs text-gray-500 mb-1">Types</div>
                               <div className="flex flex-wrap gap-1">
-                                {types.map((t, i) => (
+                                {effTypes.map((t, i) => (
                                   <span
                                     key={`${t}-${i}`}
                                     className="px-2 py-0.5 text-xs rounded-full bg-gray-100 border border-gray-200"
@@ -1567,11 +1635,11 @@ const Lineage = () => {
                             </div>
                           )}
 
-                          {fields?.length > 0 && (
+                          {effFields.length > 0 && (
                             <div>
                               <div className="text-xs text-gray-500 mb-1">Fields</div>
                               <div className="flex flex-wrap gap-1">
-                                {fields.map((f, i) => (
+                                {effFields.map((f, i) => (
                                   <span
                                     key={`${f}-${i}`}
                                     className="px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200"
@@ -1583,11 +1651,11 @@ const Lineage = () => {
                             </div>
                           )}
 
-                          {sampleValues?.length > 0 && (
+                          {effSamples.length > 0 && (
                             <div>
                               <div className="text-xs text-gray-500 mb-1">Samples</div>
                               <ul className="space-y-1">
-                                {sampleValues.slice(0, 5).map((v, i) => {
+                                {effSamples.slice(0, 5).map((v, i) => {
                                   const masked =
                                     typeof v === 'string' && !revealPII
                                       ? v.replace(/[\S]/g, (c, idx) => (idx % 3 === 0 ? c : '•'))
@@ -1631,7 +1699,7 @@ const Lineage = () => {
                             </div>
                           )}
 
-                          {!hasPII && types.length === 0 && fields.length === 0 && (
+                          {!effectiveHasPII && effTypes.length === 0 && effFields.length === 0 && (
                             <div className="text-xs text-gray-500">
                               스캔 결과 PII 항목이 발견되지 않았습니다.
                             </div>
@@ -1650,48 +1718,7 @@ const Lineage = () => {
                         <div className="w-1 h-5 bg-violet-600 rounded" />
                         <h4 className="font-bold text-gray-800">Retention Status</h4>
                       </div>
-
-                      {/* 보존기간 수동 오버라이드 버튼 */}
-                      {(() => {
-                        const key = getOverrideKey({ nodeData: selectedNodeData });
-                        const override = retentionOverrides[key];
-                        return override?.expired ? (
-                          <button
-                            onClick={() =>
-                              setRetentionOverrides((prev) => {
-                                const next = { ...prev };
-                                delete next[key];
-                                return next;
-                              })
-                            }
-                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
-                            title="이 노드의 보존기간 강제 만료 해제"
-                          >
-                            강제 해제
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              const now = new Date();
-                              const policyUntil = new Date(now.getTime() - 24 * 3600 * 1000).toISOString(); // 어제로 만료 예시
-                              setRetentionOverrides((prev) => ({
-                                ...prev,
-                                [key]: {
-                                  expired: true,
-                                  matchedIds: ['12345', '98765'], // 샘플
-                                  sources: { manualOverride: true },
-                                  policyName: 'Manual-Override',
-                                  policyUntil,
-                                },
-                              }));
-                            }}
-                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
-                            title="이 노드를 보존기간 만료로 강제 표시"
-                          >
-                            강제로 만료 표시
-                          </button>
-                        );
-                      })()}
+                      {/* 보존기간 수동 오버라이드 버튼 숨김 */}
                     </div>
 
                     {(() => {
@@ -1699,34 +1726,51 @@ const Lineage = () => {
                         extractRetentionMeta({
                           nodeData: selectedNodeData,
                         });
+
+                      // 쇼케이스 규칙 기반 폴백
+                      const flags = computeShowcaseFlags(selectedNodeData.uri);
+                      const effectiveExpired = expired || flags.retention;
+                      const effMatchedIds = (expired && matchedIds?.length)
+                        ? matchedIds
+                        : (flags.retention ? ['12345', '98765'] : []);
+                      const effPolicyName = policyName || (flags.retention ? 'Showcase-Default' : null);
+                      const effPolicyUntil = policyUntil || (flags.retention
+                        ? new Date(Date.now() - 24 * 3600 * 1000).toISOString() // 어제로 만료
+                        : null);
+
                       return (
                         <div className="space-y-3 pl-3">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500">Expired</span>
                             <span
                               className={`px-2 py-0.5 text-xs rounded-full border ${
-                                expired
+                                effectiveExpired
                                   ? 'bg-violet-50 text-violet-700 border-violet-200'
                                   : 'bg-green-50 text-green-700 border-green-200'
                               }`}
                             >
-                              {expired ? 'Yes' : 'No'}
+                              {effectiveExpired ? 'Yes' : 'No'}
                             </span>
-                            {expired && (
+                            {!expired && flags.retention && (
+                              <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full border bg-gray-50 text-gray-600 border-gray-200">
+                                임시(쇼케이스)
+                              </span>
+                            )}
+                            {effectiveExpired && (
                               <span className="ml-2 text-xs text-gray-500">
-                                Matched IDs: <span className="font-semibold">{matchedIds.length}</span>
+                                Matched IDs: <span className="font-semibold">{effMatchedIds.length}</span>
                               </span>
                             )}
                           </div>
 
-                          {(policyName || policyUntil) && (
+                          {(effPolicyName || effPolicyUntil) && (
                             <div className="text-xs text-gray-600">
-                              {policyName && <span>Policy: <b>{policyName}</b></span>}
-                              {policyName && policyUntil && <span className="mx-1">·</span>}
-                              {policyUntil && (
+                              {effPolicyName && <span>Policy: <b>{effPolicyName}</b></span>}
+                              {effPolicyName && effPolicyUntil && <span className="mx-1">·</span>}
+                              {effPolicyUntil && (
                                 <span>
-                                  Until:{' '}
-                                  {new Date(policyUntil).toLocaleString('ko-KR', {
+                                  Until{' '}
+                                  {new Date(effPolicyUntil).toLocaleString('ko-KR', {
                                     year: 'numeric',
                                     month: '2-digit',
                                     day: '2-digit',
@@ -1740,11 +1784,11 @@ const Lineage = () => {
                             </div>
                           )}
 
-                          {expired && matchedIds.length > 0 && (
+                          {effectiveExpired && effMatchedIds.length > 0 && (
                             <div>
                               <div className="text-xs text-gray-500 mb-1">Sample IDs</div>
                               <ul className="space-y-1">
-                                {matchedIds.slice(0, 5).map((v, i) => (
+                                {effMatchedIds.slice(0, 5).map((v, i) => (
                                   <li
                                     key={`mid-${i}`}
                                     className="font-mono text-xs break-all bg-gray-50 border border-gray-200 rounded px-2 py-1"
@@ -1757,7 +1801,8 @@ const Lineage = () => {
                           )}
                           <div className="text-[11px] text-gray-500">
                             Sources: RDS Report {sources?.rdsReport ? '✔' : '✖'} · Cross-Check{' '}
-                            {sources?.crossCheckReport ? '✔' : '✖'} {sources?.manualOverride ? '· Manual ✔' : ''}
+                            {sources?.crossCheckReport ? '✔' : '✖'}
+                            {flags.retention && !sources?.manualOverride ? ' · 임시(쇼케이스) ✔' : (sources?.manualOverride ? ' · Manual ✔' : '')}
                           </div>
                         </div>
                       );

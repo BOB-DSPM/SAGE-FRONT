@@ -1,4 +1,4 @@
-// src/components/DataTarget/DataTargetList.js - 수정된 버전
+// src/components/DataTarget/DataTargetList.js - 헤더/설명 글자만 크게
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ResourceCard from './ResourceCard';
@@ -345,8 +345,13 @@ const DataTargetList = ({ inventoryData, loading }) => {
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">AWS 리소스 인벤토리</h3>
-              <p className="text-gray-600">총 {inventoryData.length}개의 리소스 | {selectedResources.size}개 선택됨</p>
+              {/* ⬆️ 제목만 크게 */}
+              <h3 className="text-3xl font-bold text-gray-900 mb-1">AWS 리소스 인벤토리</h3>
+              {/* ⬆️ 설명 텍스트만 살짝 크게 */}
+              <p className="text-[16px] text-gray-700">
+                총 <span className="font-semibold">{inventoryData.length}</span>개의 리소스 |{' '}
+                <span className="font-semibold">{selectedResources.size}</span>개 선택됨
+              </p>
             </div>
             
             <div className="flex items-center gap-2">
@@ -377,7 +382,7 @@ const DataTargetList = ({ inventoryData, loading }) => {
               {/* 전체 선택/해제 버튼 */}
               <button
                 onClick={handleSelectAll}
-                className="h-10 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors whitespace-nowrap"
+                className="h-10 px-4 border border-gray-500 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors whitespace-nowrap"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -414,11 +419,12 @@ const DataTargetList = ({ inventoryData, loading }) => {
           </div>
         </div>
 
+        {/* 필터 버튼 텍스트 살짝 키움 */}
         <div className="mb-6 flex gap-2 flex-wrap">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              filter === 'all' ? 'bg-primary-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+            className={`px-4 py-2 rounded-lg transition-colors text-[15px] ${
+              filter === 'all' ? 'bg-primary-600 text-white' : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
             }`}
           >
             전체 ({inventoryData.length})
@@ -430,8 +436,8 @@ const DataTargetList = ({ inventoryData, loading }) => {
               <button
                 key={type}
                 onClick={() => setFilter(type)}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  filter === type ? 'bg-primary-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                className={`px-4 py-2 rounded-lg transition-colors text-[20px] ${
+                  filter === type ? 'bg-primary-600 text-white' : 'bg-white text-gray-800 border border-gray-500 hover:bg-gray-50'
                 } ${count === 0 ? 'opacity-50' : ''}`}
               >
                 {label} ({count})
@@ -441,9 +447,9 @@ const DataTargetList = ({ inventoryData, loading }) => {
         </div>
 
         {filteredResources.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ">
             {filteredResources.map(resource => (
-              <div key={resource.id} className="relative">
+              <div key={resource.id} className="relative ">
                 <ResourceCard
                   resource={resource}
                   onClick={() => handleResourceClick(resource)}

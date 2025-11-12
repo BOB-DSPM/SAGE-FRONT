@@ -282,7 +282,7 @@ const ThreatCompliance = () => {
 
       <div className="flex items-center gap-3">
         <ClipboardList className="w-8 h-8 text-primary-500" />
-        <h1 className="text-3xl font-bold text-gray-900">Threats</h1>
+        <h1 className="text-3xl font-bold text-gray-900">위험</h1>
       </div>
 
       <div className="flex items-center gap-2 text-sm text-gray-600 py-2 px-2">
@@ -313,7 +313,7 @@ const ThreatCompliance = () => {
         <div className={`bg-white rounded-lg shadow-sm border transition-all ${sidePanelOpen ? 'mr-[50%]' : ''}`}>
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">{selectedFramework} Requirements</h2>
+              <h2 className="text-xl font-semibold text-gray-900">{selectedFramework}</h2>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-500">{filteredRequirements.length} 항목</span>
                 <div className="flex items-center gap-3">
@@ -346,7 +346,7 @@ const ThreatCompliance = () => {
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     selectedThreatGroup === group
                       ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-500 border-[2.5px] border-gray-300'
                   }`}
                 >
                   {group}

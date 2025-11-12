@@ -1,7 +1,4 @@
-// ==============================
-// src/App.js
-// (사용자 제공안 + /opensource/:code 상세 라우트 포함)
-// ==============================
+
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 //import Login from './pages/Login';
@@ -18,23 +15,26 @@ import AegisResults from './pages/AegisResults';
 import ThreatCompliance from './pages/ThreatCompliance';
 import ThreatComplianceDetail from './pages/ThreatComplianceDetail';
 
-// ✅ 추가: Opensource 페이지 임포트
+/* ✅ 추가: Opensource 페이지 임포트 */
 import Opensource from './pages/Opensource';
 import OpensourceDetail from './pages/OpensourceDetail';
 
-// ✅ 추가: 아이콘 임포트 확장 (lucide-react)
-import { Activity, Database, Bell, Shield, GitBranch, Cloud, Target, BarChart3, ClipboardList, FolderSearch, ShieldAlert, Boxes } from 'lucide-react';
+/* ✅ 아이콘 (참고: 실제 사용은 Sidebar 컴포넌트 내부) */
+import {
+  Activity, Database, Bell, Shield, GitBranch, Cloud, Target,
+  BarChart3, ClipboardList, FolderSearch, ShieldAlert, Boxes
+} from 'lucide-react';
 
 const tabs = [
   { id: 'overview', name: '메인', icon: Activity },
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
   { id: 'data-target', name: '데이터 수집/식별', icon: FolderSearch },
-  { id: 'lineage', name: '데이터 흐름 추적', icon: GitBranch },
+  { id: 'lineage', name: '데이터 라인리지', icon: GitBranch },
 
   // 아코디언 메뉴
-  { 
-    id: 'audit', 
-    name: '진단', 
+  {
+    id: 'audit',
+    name: '진단',
     icon: ClipboardList,
     children: [
       { id: 'policies2', name: '컴플라이언스', icon: ClipboardList },
@@ -76,11 +76,11 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col app-bg">
       <Header onLogout={handleLogout} />
       <div className="flex flex-1">
         {showSidebar && <Sidebar tabs={tabs} activeTab={activeTab} setActiveTab={handleTabChange} />}
-        <div className="flex-1 px-6 py-8">{children}</div>
+        <div className="flex-1 px-6 py-8 content-wrap">{children}</div>
       </div>
     </div>
   );
@@ -138,11 +138,11 @@ const MainDashboard = ({ onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col app-bg">
       <Header onLogout={onLogout} />
       <div className="flex flex-1">
         <Sidebar tabs={tabs} activeTab={activeTab} setActiveTab={handleTabChange} />
-        <div className="flex-1 px-6 py-8">{renderContent()}</div>
+        <div className="flex-1 px-6 py-8 content-wrap">{renderContent()}</div>
       </div>
     </div>
   );
@@ -151,7 +151,7 @@ const MainDashboard = ({ onLogout }) => {
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
- //if (!isLoggedIn) {
+  //if (!isLoggedIn) {
   //  return <Login onLogin={() => setIsLoggedIn(true)} />;
   //}
 
@@ -160,34 +160,34 @@ const App = () => {
       <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/*" element={<MainDashboard onLogout={() => setIsLoggedIn(false)} />} />
-        <Route 
-          path="/aegis-results" 
+        <Route
+          path="/aegis-results"
           element={
-            <div className="min-h-screen flex flex-col bg-gray-50">
+            <div className="min-h-screen flex flex-col app-bg">
               <Header onLogout={() => setIsLoggedIn(false)} />
-              <div className="flex-1 px-6 py-8">
+              <div className="flex-1 px-6 py-8 content-wrap">
                 <AegisResults />
               </div>
             </div>
-          } 
+          }
         />
-        <Route 
-          path="/threat-compliance/:reqId" 
+        <Route
+          path="/threat-compliance/:reqId"
           element={
-            <div className="min-h-screen flex flex-col bg-gray-50">
+            <div className="min-h-screen flex flex-col app-bg">
               <Header onLogout={() => setIsLoggedIn(false)} />
-              <div className="flex-1 px-6 py-8">
+              <div className="flex-1 px-6 py-8 content-wrap">
                 <ThreatComplianceDetail />
               </div>
             </div>
-          } 
+          }
         />
-        <Route 
+        <Route
           path="/opensource/:code"
           element={
-            <div className="min-h-screen flex flex-col bg-gray-50">
+            <div className="min-h-screen flex flex-col app-bg">
               <Header onLogout={() => setIsLoggedIn(false)} />
-              <div className="flex-1 px-6 py-8">
+              <div className="flex-1 px-6 py-8 content-wrap">
                 <OpensourceDetail />
               </div>
             </div>

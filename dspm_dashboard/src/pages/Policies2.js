@@ -58,6 +58,9 @@ const generateSessionId = () => {
 };
 // ======================================
 
+// 🔠 화면 표기만 대문자로
+const toUpper = (s) => (s ? String(s).toUpperCase() : '');
+
 const Policies2 = () => {
   const [frameworks, setFrameworks] = useState([]);
   const [selectedFramework, setSelectedFramework] = useState(null);
@@ -509,7 +512,8 @@ const Policies2 = () => {
         {selectedFramework && (
           <>
             <ChevronRight className="w-4 h-4" />
-            <span className="text-gray-900">{selectedFramework}</span>
+            {/* 🔠 표기만 대문자 */}
+            <span className="text-gray-900 uppercase">{toUpper(selectedFramework)}</span>
           </>
         )}
       </div>
@@ -540,7 +544,7 @@ const Policies2 = () => {
                 <div
                   key={fw.framework}
                   onClick={() => fetchRequirements(fw.framework)}
-                  className="bg-white rounded-lg shadow-sm border p-6 cursor-pointer hover:shadow-md transition-shadow"
+                  className="bg-white rounded-lg shadow-sm border-2 border-gray-300 p-6 cursor-pointer hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -557,7 +561,10 @@ const Policies2 = () => {
                         <ClipboardList className="w-6 h-6 text-blue-600" style={{ display: 'none' }} />
                       </div>
                       <div className="flex-1 ml-2">
-                        <h3 className="text-lg font-semibold text-gray-900 leading-tight">{fw.framework}</h3>
+                        {/* 🔠 카드 타이틀도 대문자 */}
+                        <h3 className="text-[20px] font-semibold text-gray-900 leading-tight uppercase">
+                          <b>{toUpper(fw.framework)}</b>
+                        </h3>
                         <p className="text-sm text-gray-500 mt-0.5">Compliance Framework</p>
                       </div>
                     </div>
@@ -577,9 +584,28 @@ const Policies2 = () => {
 
       {selectedFramework && !loading && (
         <div className={`bg-white rounded-lg shadow-sm border transition-all ${sidePanelOpen ? 'mr-[50%]' : ''}`}>
-          <div className="p-6 border-b border-gray-200">
+          <div className="p-6 border-b border-gray-300">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">{selectedFramework} Requirements</h2>
+              {/* 🔠 헤더에 프레임워크 아이콘(좀 더 크게) + 대문자 타이틀 ('… 항목') */}
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 bg-white rounded-lg flex items-center justify-center overflow-hidden">
+                  <img
+                    src={getFrameworkLogo(selectedFramework)}
+                    alt={`${selectedFramework} logo`}
+                    className="w-full h-full object-contain p-2"
+                    onError={e => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'block';
+                    }}
+                  />
+                  {/* 로고 미로딩 시 폴백 아이콘 (조금 키움) */}
+                  <ClipboardList className="w-8 h-8 text-blue-600" style={{ display: 'none' }} />
+                </div>
+                <h2 className="text-3xl font-semibold text-gray-900 uppercase">
+                  {toUpper(selectedFramework)}
+                </h2>
+              </div>
+
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-500">{requirements.length} 항목</span>
                 <div className="flex items-center gap-3">

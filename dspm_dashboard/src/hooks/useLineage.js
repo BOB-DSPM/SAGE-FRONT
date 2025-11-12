@@ -421,12 +421,12 @@ export const useLineage = () => {
 
   const getDataNodeStyle = (nodeType, isSelected, isConnected, isDimmed) => {
     const baseStyle = {
-      border: '1px solid #e2e8f0',
-      borderRadius: '4px',
+      border: '4px solid #e2e8f0',
+      borderRadius: '8px',
       padding: '8px',
-      fontSize: '12px',
+      fontSize: '20px',
       width: 'auto',
-      minWidth: '120px',
+      minWidth: '200px',
     };
 
     if (isDimmed) {
