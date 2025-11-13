@@ -328,7 +328,7 @@ export default function OpensourceDetail() {
 
   const onChangeField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  // 3) 실행 (동기)
+  // 3) 실행 (동기) — 내부 로직은 그대로 두지만 버튼에서는 사용 안 함
   const onRunOnce = async () => {
     setRunRes(null);
     setFromLatest(false);
@@ -494,12 +494,12 @@ export default function OpensourceDetail() {
                 </div>
                 <div className="ml-auto">
                   <button
-                    onClick={onRunOnce}
-                    disabled={runLoading || liveRunning}
+                    onClick={onRunLive}
+                    disabled={liveRunning}
                     className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white hover:opacity-90 disabled:opacity-60"
                   >
                     <Play className="w-4 h-4" />
-                    다시 실행
+                    다시 실행 (Live)
                   </button>
                 </div>
               </div>
@@ -626,17 +626,8 @@ export default function OpensourceDetail() {
               </Section>
             )}
 
-            {/* Actions */}
+            {/* Actions — 실행 버튼은 Run (Live)만 */}
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={onRunOnce}
-                disabled={runLoading || liveRunning}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-black text-white hover:opacity-90 disabled:opacity-60 shadow-sm"
-              >
-                <Play className="w-4 h-4" />
-                {runLoading ? "Running..." : "Build & Run (once)"}
-              </button>
-
               <button
                 onClick={onRunLive}
                 disabled={liveRunning || runLoading}
