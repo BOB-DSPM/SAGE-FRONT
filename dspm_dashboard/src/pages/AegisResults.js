@@ -74,6 +74,12 @@ const AegisResults = () => {
 
   const pageSize = 20;
 
+  // 목록으로 돌아가는 공통 처리
+  const handleBackToList = () => {
+    // TODO: 실제 "목록" 화면의 라우트로 수정 (예: '/aegis' 등)
+    navigate('/aegis');
+  };
+
   const getSourceNames = () => {
     if (!services || services.length === 0) return [];
     return services;
@@ -316,7 +322,7 @@ const AegisResults = () => {
         <div className="text-center">
           <p className="text-gray-600 mb-4">잘못된 접근입니다.</p>
           <button
-            onClick={() => navigate(-1)}
+            onClick={handleBackToList}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
             돌아가기
@@ -359,7 +365,7 @@ const AegisResults = () => {
               새로고침
             </button>
             <button
-              onClick={() => navigate(-1)}
+              onClick={handleBackToList}
               className="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
             >
               목록으로
