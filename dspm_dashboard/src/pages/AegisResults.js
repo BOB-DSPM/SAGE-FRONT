@@ -77,7 +77,7 @@ const AegisResults = () => {
   // 목록으로 돌아가는 공통 처리
   const handleBackToList = () => {
     // TODO: 실제 "목록" 화면의 라우트로 수정 (예: '/aegis' 등)
-    navigate('/aegis');
+    navigate('/data-target');
   };
 
   const getSourceNames = () => {

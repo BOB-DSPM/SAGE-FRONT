@@ -432,7 +432,7 @@ export default function OpensourceDetail() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Link
-              to="/overview"
+              to="/opensource"
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100"
             >
               <ArrowLeft className="w-4 h-4" />
