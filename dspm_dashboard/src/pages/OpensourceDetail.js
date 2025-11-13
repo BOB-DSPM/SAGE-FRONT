@@ -24,6 +24,9 @@ import {
 } from "lucide-react";
 import { getDetail, runTool, getLatestRun, streamRun } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
+import custodianrIcon from "../assets/oss/custodian.png";
+import scoutIcon from "../assets/oss/scout.png";
+import steampipeIcon from "../assets/oss/steampipe.png";
 
 // ─ Utilities ─
 const getDefaultDir = () =>
@@ -245,7 +248,17 @@ export default function OpensourceDetail() {
   const [fromLatest, setFromLatest] = useState(false);
   const [latestTime, setLatestTime] = useState(null); // seconds epoch
 
-  const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
+  const iconMap = useMemo(
+    () => ({
+      prowler: prowlerIcon,
+      custodian: custodianrIcon,
+      "cloud-custodian": custodianrIcon,
+      steampipe: steampipeIcon,
+      scout: scoutIcon,
+      "scout-suite": scoutIcon,
+    }),
+    []
+  );
   const iconSrc = iconMap[code];
 
   useEffect(() => {

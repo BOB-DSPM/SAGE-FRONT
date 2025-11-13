@@ -7,6 +7,9 @@ import { useNavigate } from "react-router-dom";
 import { Github } from "lucide-react";
 import { listCatalog } from "../services/ossApi";
 import prowlerIcon from "../assets/oss/prowler.png";
+import custodianrIcon from "../assets/oss/custodian.png";
+import scoutIcon from "../assets/oss/scout.png";
+import steampipeIcon from "../assets/oss/steampipe.png";
 
 const getDefaultDir = () =>
   localStorage.getItem("oss.directory") ||
@@ -19,7 +22,25 @@ export default function Opensource() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const iconMap = useMemo(() => ({ prowler: prowlerIcon }), []);
+  // 코드명 기준 아이콘 매핑
+  const iconMap = useMemo(
+    () => ({
+      // prowler
+      prowler: prowlerIcon,
+
+      // Cloud Custodian (코드가 custodian / cloud-custodian 둘 다 올 수 있다고 가정)
+      custodian: custodianrIcon,
+      "cloud-custodian": custodianrIcon,
+
+      // Steampipe
+      steampipe: steampipeIcon,
+
+      // Scout Suite (코드가 scout / scout-suite 둘 다 올 수 있다고 가정)
+      scout: scoutIcon,
+      "scout-suite": scoutIcon,
+    }),
+    []
+  );
 
   useEffect(() => {
     (async () => {
@@ -63,7 +84,9 @@ export default function Opensource() {
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">오픈소스</h1>
-        <div className="text-xs text-gray-500">* 카드 클릭 시 상세 페이지로 이동</div>
+        <div className="text-xs text-gray-500">
+          * 카드 클릭 시 상세 페이지로 이동
+        </div>
       </div>
 
       <div className="flex items-center gap-3 mb-4">
@@ -78,14 +101,19 @@ export default function Opensource() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((it) => {
+          // it.iconSrc(백엔드/카탈로그에서 지정) 우선, 없으면 코드 기반 매핑
           const iconSrc = it.iconSrc || iconMap[it.code];
+
           return (
             <button
               key={it.code}
               onClick={() => onCardClick(it)}
               className="relative text-left border rounded-xl p-4 bg-white hover:shadow-md transition focus:outline-none"
             >
-              <div className="absolute top-3 right-3" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="absolute top-3 right-3"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {it.homepage && (
                   <a
                     href={it.homepage}
@@ -102,35 +130,53 @@ export default function Opensource() {
               <div className="flex items-start gap-3">
                 <div className="shrink-0">
                   {iconSrc ? (
-                    <img src={iconSrc} alt={`${it.name} icon`} className="w-10 h-10 rounded-md" />
+                    <img
+                      src={iconSrc}
+                      alt={`${it.name} icon`}
+                      className="w-10 h-10 rounded-md"
+                    />
                   ) : (
                     <div className="w-10 h-10 rounded-md bg-gray-100 border" />
                   )}
                 </div>
+
                 <div className="min-w-0">
-                  <div className="text-lg font-semibold truncate">{it.name}</div>
-                  <div className="text-sm text-gray-500 mt-0.5">{it.category}</div>
+                  <div className="text-lg font-semibold truncate">
+                    {it.name}
+                  </div>
+                  <div className="text-sm text-gray-500 mt-0.5">
+                    {it.category}
+                  </div>
                   <p className="text-sm mt-2 line-clamp-3">{it.desc}</p>
 
                   {Array.isArray(it.tags) && it.tags.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
                       {it.tags.map((t) => (
-                        <span key={t} className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                        <span
+                          key={t}
+                          className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600"
+                        >
                           #{t}
                         </span>
                       ))}
                     </div>
                   )}
 
-                  {it.license && <div className="text-xs text-gray-500 mt-2">License: {it.license}</div>}
+                  {it.license && (
+                    <div className="text-xs text-gray-500 mt-2">
+                      License: {it.license}
+                    </div>
+                  )}
                 </div>
               </div>
             </button>
           );
         })}
 
-        {!loading && filtered.length === 0 && <div className="text-sm text-gray-500">결과 없음</div>}
+        {!loading && filtered.length === 0 && (
+          <div className="text-sm text-gray-500">결과 없음</div>
+        )}
       </div>
     </div>
   );
-};
+}
