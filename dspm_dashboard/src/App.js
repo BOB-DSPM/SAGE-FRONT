@@ -1,6 +1,12 @@
-
-import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 //import Login from './pages/Login';
 import Header from './components/navigation/Header';
 import Sidebar from './components/navigation/Sidebar';
@@ -19,10 +25,23 @@ import ThreatComplianceDetail from './pages/ThreatComplianceDetail';
 import Opensource from './pages/Opensource';
 import OpensourceDetail from './pages/OpensourceDetail';
 
+import OssEvidence from './pages/OssEvidence';
+
 /* ✅ 아이콘 (참고: 실제 사용은 Sidebar 컴포넌트 내부) */
 import {
-  Activity, Database, Bell, Shield, GitBranch, Cloud, Target,
-  BarChart3, ClipboardList, FolderSearch, ShieldAlert, Boxes
+  Activity,
+  Database,
+  Bell,
+  Shield,
+  GitBranch,
+  Cloud,
+  Target,
+  BarChart3,
+  ClipboardList,
+  FolderSearch,
+  ShieldAlert,
+  Boxes,
+  FileText,
 } from 'lucide-react';
 
 const tabs = [
@@ -39,14 +58,16 @@ const tabs = [
     children: [
       { id: 'policies2', name: '컴플라이언스', icon: ClipboardList },
       { id: 'threat-compliance', name: '위험', icon: ShieldAlert },
-    ]
+    ],
   },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
   // { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 
-  // { id: 'opensource', name: '오픈소스', icon: Boxes },
+  { id: 'opensource', name: '오픈소스', icon: Boxes },
+  { id: 'oss-evidence', name: '증적 보고서', icon: FileText },
 ];
 
+// 현재 이 Layout은 사용 안 하고 있어서 그대로 두되, URL 연동은 MainDashboard 쪽에서만 처리
 const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [componentKeys, setComponentKeys] = useState({
@@ -60,6 +81,7 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
     // ✅ 추가: opensource 키
     opensource: 0,
     //alerts: 0,
+    'oss-evidence': 0,
   });
 
   const handleLogout = () => {
@@ -69,9 +91,9 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
-    setComponentKeys(prev => ({
+    setComponentKeys((prev) => ({
       ...prev,
-      [tabId]: (prev[tabId] ?? 0) + 1
+      [tabId]: (prev[tabId] ?? 0) + 1,
     }));
   };
 
@@ -79,7 +101,9 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
     <div className="min-h-screen flex flex-col app-bg">
       <Header onLogout={handleLogout} />
       <div className="flex flex-1">
-        {showSidebar && <Sidebar tabs={tabs} activeTab={activeTab} setActiveTab={handleTabChange} />}
+        {showSidebar && (
+          <Sidebar tabs={tabs} activeTab={activeTab} setActiveTab={handleTabChange} />
+        )}
         <div className="flex-1 px-6 py-8 content-wrap">{children}</div>
       </div>
     </div>
@@ -87,7 +111,32 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
 };
 
 const MainDashboard = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const TAB_IDS = [
+    'overview',
+    'data-target',
+    'lineage',
+    'policies',
+    'policies2',
+    'threat-compliance',
+    'opensource',
+    'oss-evidence',
+  ];
+
+  // basename("/dashboard") 를 고려해서 현재 path 에서 탭 id 추출
+  const getTabFromPath = (pathname) => {
+    const path = pathname.startsWith('/dashboard')
+      ? pathname.replace('/dashboard', '') || '/'
+      : pathname;
+
+    const segment = path.replace(/^\/+/, '').split('/')[0]; // "overview", "data-target" 등
+    if (TAB_IDS.includes(segment)) return segment;
+    return 'overview';
+  };
+
+  const [activeTab, setActiveTab] = useState(() => getTabFromPath(location.pathname));
   const [componentKeys, setComponentKeys] = useState({
     overview: 0,
     //'aws-setup': 0,
@@ -99,14 +148,26 @@ const MainDashboard = ({ onLogout }) => {
     // ✅ 추가: opensource 키
     opensource: 0,
     //alerts: 0,
+    'oss-evidence': 0,
   });
+
+  // URL이 바뀔 때(뒤로가기, 직접 입력 등) activeTab 동기화
+  useEffect(() => {
+    const tabId = getTabFromPath(location.pathname);
+    if (tabId !== activeTab) {
+      setActiveTab(tabId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
-    setComponentKeys(prev => ({
+    setComponentKeys((prev) => ({
       ...prev,
-      [tabId]: (prev[tabId] ?? 0) + 1
+      [tabId]: (prev[tabId] ?? 0) + 1,
     }));
+    // 탭 변경 시 URL도 함께 변경
+    navigate(`/${tabId}`);
   };
 
   const renderContent = () => {
@@ -125,11 +186,10 @@ const MainDashboard = ({ onLogout }) => {
         return <Lineage key={componentKeys.lineage} />;
       case 'threat-compliance':
         return <ThreatCompliance key={componentKeys['threat-compliance']} />;
-
-      // ✅ 추가: opensource 렌더
       case 'opensource':
         return <Opensource key={componentKeys.opensource} />;
-
+      case 'oss-evidence':
+        return <OssEvidence key={componentKeys['oss-evidence']} />;
       //case 'aws-setup':
       //  return <AwsSetup key={componentKeys['aws-setup']} />;
       default:
@@ -158,8 +218,13 @@ const App = () => {
   return (
     <BrowserRouter basename="/dashboard">
       <Routes>
+        {/* 기본 진입 시 /overview 로 리다이렉트 */}
         <Route path="/" element={<Navigate to="/overview" replace />} />
+
+        {/* 메인 대시보드: /overview, /data-target, /lineage, /policies2, ... 전부 여기서 처리 */}
         <Route path="/*" element={<MainDashboard onLogout={() => setIsLoggedIn(false)} />} />
+
+        {/* Aegis 결과 상세 페이지 */}
         <Route
           path="/aegis-results"
           element={
@@ -171,6 +236,8 @@ const App = () => {
             </div>
           }
         />
+
+        {/* 위협-컴플라이언스 상세 */}
         <Route
           path="/threat-compliance/:reqId"
           element={
@@ -182,6 +249,8 @@ const App = () => {
             </div>
           }
         />
+
+        {/* 오픈소스 도구별 상세 */}
         <Route
           path="/opensource/:code"
           element={
