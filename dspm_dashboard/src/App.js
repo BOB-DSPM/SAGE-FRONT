@@ -57,7 +57,7 @@ const tabs = [
     icon: ClipboardList,
     children: [
       { id: 'policies2', name: '컴플라이언스', icon: ClipboardList },
-      { id: 'threat-compliance', name: '위험', icon: ShieldAlert },
+      { id: 'threat-compliance', name: '보안 위협', icon: ShieldAlert },
     ],
   },
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
