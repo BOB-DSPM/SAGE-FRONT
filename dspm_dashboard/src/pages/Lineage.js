@@ -1564,7 +1564,7 @@ const Lineage = () => {
                       const effFields = (hasPII && fields?.length) ? fields : (flags.pii ? ['customer_name', 'email'] : []);
                       const effSamples = (hasPII && sampleValues?.length)
                         ? sampleValues
-                        : (flags.pii ? ['홍길동', 'test@example.com'] : []);
+                        : (flags.pii ? ['최원겸', 'iddaiddaidda@naver.com'] : []);
 
                       return (
                         <div className="space-y-3 pl-3">
@@ -1705,7 +1705,7 @@ const Lineage = () => {
                       const effectiveExpired = expired || flags.retention;
                       const effMatchedIds = (expired && matchedIds?.length)
                         ? matchedIds
-                        : (flags.retention ? ['12345', '98765'] : []);
+                        : (flags.retention ? ['26', '317'] : []);
                       const effPolicyName = policyName || (flags.retention ? 'Showcase-Default' : null);
                       const effPolicyUntil = policyUntil || (flags.retention
                         ? new Date(Date.now() - 24 * 3600 * 1000).toISOString() // 어제로 만료
