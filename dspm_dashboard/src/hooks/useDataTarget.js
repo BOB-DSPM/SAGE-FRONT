@@ -1,5 +1,6 @@
 // useDataTarget.js
 import { useState, useEffect } from 'react';
+import { INVENTORY_API_BASE } from '../config/api';
 
 export const useDataTarget = (activeTab) => {
   const [inventoryData, setInventoryData] = useState([]);
@@ -15,7 +16,7 @@ export const useDataTarget = (activeTab) => {
       setLoadingInventory(true);
       setError(null);
       try {
-        const res = await fetch('http://43.202.228.52:8000/api/all-resources');
+        const res = await fetch(`${INVENTORY_API_BASE}/api/all-resources`);
         if (!res.ok) {
           setError(`API ${res.status} ${res.statusText}`);
           setInventoryData([]);

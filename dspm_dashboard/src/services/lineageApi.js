@@ -1,7 +1,7 @@
 // src/services/lineageApi.js
-const BASE_URL =
-  process.env.REACT_APP_LINEAGE_API_BASE || "http://43.202.228.52:8300";
+import { LINEAGE_API_BASE } from '../config/api';
 
+const BASE_URL = LINEAGE_API_BASE;
 async function httpGet(path, params = {}) {
   const url = new URL(BASE_URL + path);
 

@@ -1,8 +1,9 @@
 // ======================================
 // file: src/services/evidenceApi.js
 // ======================================
-const API_BASE =
-  process.env.REACT_APP_OSS_BASE || "http://43.202.228.52:8800/oss";
+import { OSS_API_BASE } from '../config/api';
+
+const API_BASE = OSS_API_BASE;
 
 /**
  * Evidence 관련 API:

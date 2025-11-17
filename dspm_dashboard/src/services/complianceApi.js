@@ -1,6 +1,9 @@
 // src/services/complianceApi.js
 // 감사 API 클라이언트 (세션 ID를 항상 안전하게 쿼리스트링에 부착)
-const AUDIT_API_BASE = "http://43.202.228.52:8103";
+import { AUDIT_API_BASE } from '../config/api';
+
+// 감사 API 클라이언트 (세션 ID를 항상 안전하게 쿼리스트링에 부착)
+const BASE = AUDIT_API_BASE;
 
 function withSession(url, sessionId) {
   const u = new URL(url);

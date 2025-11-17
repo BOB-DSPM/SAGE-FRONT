@@ -5,9 +5,10 @@ import { useDataTarget } from '../hooks/useDataTarget';
 import DataTargetList from '../components/DataTarget/DataTargetList';
 import { aegisApi } from '../services/aegisApi';
 import { Database, AlertCircle } from 'lucide-react';
+import { AEGIS_API_BASE, COLLECTOR_API_BASE } from '../config/api';
 
-const ANALYZER_API_BASE = 'http://43.202.228.52:9000';
-const COLLECTOR_API = 'http://43.202.228.52:8000';
+const ANALYZER_API_BASE = AEGIS_API_BASE;
+const COLLECTOR_API = COLLECTOR_API_BASE;
 
 const DataTarget = ({ activeTab }) => {
   const { inventoryData, loadingInventory, error, raw } = useDataTarget(activeTab);

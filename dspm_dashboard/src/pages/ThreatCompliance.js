@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { ClipboardList, ChevronRight, CheckCircle, XCircle, AlertCircle, Play, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { sessionService } from '../services/sessionService';
 import { complianceApi } from '../services/complianceApi';
+import { COMPLIANCE_API_BASE } from '../config/api';
 
-const API_BASE = 'http://43.202.228.52:8003';
+const API_BASE = COMPLIANCE_API_BASE;
 
 const ThreatCompliance = () => {
   const [frameworks, setFrameworks] = useState([]);
