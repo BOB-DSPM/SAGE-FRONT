@@ -1,7 +1,7 @@
 // src/services/apiBase.js 같은 곳
 
 const HOST =
-  process.env.REACT_APP_API_HOST || '192.168.0.10';
+  process.env.REACT_APP_API_HOST || '211.44.183.248';
 
 const http = (port, suffix = '') => `http://${HOST}:${port}${suffix}`;
 
