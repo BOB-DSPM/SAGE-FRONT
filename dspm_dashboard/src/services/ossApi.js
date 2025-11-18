@@ -4,7 +4,7 @@
 // ============================================================================
 import { OSS_API_BASE } from '../config/api';
 
-const API_BASE = OSS_API_BASE || "http://3.37.174.51:8800/oss";
+const API_BASE = OSS_API_BASE
 
 const DEFAULT_DIR = () =>
   localStorage.getItem('oss.directory') ||
