@@ -27,11 +27,12 @@ import prowlerIcon from "../assets/oss/prowler.png";
 import custodianrIcon from "../assets/oss/custodian.png";
 import scoutIcon from "../assets/oss/scout.png";
 import steampipeIcon from "../assets/oss/steampipe.png";
+import { getEnv } from "../config/runtimeEnv";
 
 // ─ Utilities ─
 const getDefaultDir = () =>
   localStorage.getItem("oss.directory") ||
-  process.env.REACT_APP_OSS_WORKDIR ||
+  getEnv("REACT_APP_OSS_WORKDIR") ||
   "/workspace";
 
 function validateRequired(detail, form, toolCode) {

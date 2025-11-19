@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Github } from "lucide-react";
 import { listCatalog } from "../services/ossApi";
+import { getEnv } from "../config/runtimeEnv";
 import prowlerIcon from "../assets/oss/prowler.png";
 import custodianrIcon from "../assets/oss/custodian.png";
 import scoutIcon from "../assets/oss/scout.png";
@@ -13,7 +14,7 @@ import steampipeIcon from "../assets/oss/steampipe.png";
 
 const getDefaultDir = () =>
   localStorage.getItem("oss.directory") ||
-  process.env.REACT_APP_OSS_WORKDIR ||
+  getEnv("REACT_APP_OSS_WORKDIR") ||
   "/workspace";
 
 export default function Opensource() {

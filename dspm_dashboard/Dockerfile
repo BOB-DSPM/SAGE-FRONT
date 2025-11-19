@@ -6,35 +6,19 @@ RUN npm ci
 
 COPY . .
 
-# Build-time configuration for API endpoints
-ARG REACT_APP_API_HOST
-ARG REACT_APP_OSS_BASE
-ARG REACT_APP_LINEAGE_API_BASE
-ARG REACT_APP_AUDIT_API_BASE
-ARG REACT_APP_AEGIS_API_BASE
-ARG REACT_APP_COLLECTOR_API_BASE
-ARG REACT_APP_COMPLIANCE_API_BASE
-ARG REACT_APP_INVENTORY_API_BASE
-
-ENV REACT_APP_API_HOST=$REACT_APP_API_HOST \
-    REACT_APP_OSS_BASE=$REACT_APP_OSS_BASE \
-    REACT_APP_LINEAGE_API_BASE=$REACT_APP_LINEAGE_API_BASE \
-    REACT_APP_AUDIT_API_BASE=$REACT_APP_AUDIT_API_BASE \
-    REACT_APP_AEGIS_API_BASE=$REACT_APP_AEGIS_API_BASE \
-    REACT_APP_COLLECTOR_API_BASE=$REACT_APP_COLLECTOR_API_BASE \
-    REACT_APP_COMPLIANCE_API_BASE=$REACT_APP_COMPLIANCE_API_BASE \
-    REACT_APP_INVENTORY_API_BASE=$REACT_APP_INVENTORY_API_BASE
-
 RUN npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/build /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
 
 # Give runtime directories to non-root nginx user
-RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/run /etc/nginx/conf.d
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/run /etc/nginx/conf.d && \
+    chmod +x /docker-entrypoint.sh
 
 USER nginx
 
 EXPOSE 8080
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

@@ -3,12 +3,13 @@
 // (fetch 유틸 모음; download_url 자동 보강 포함 + 사소한 안정화)
 // ============================================================================
 import { OSS_API_BASE } from '../config/api';
+import { getEnv } from '../config/runtimeEnv';
 
 const API_BASE = OSS_API_BASE
 
 const DEFAULT_DIR = () =>
   localStorage.getItem('oss.directory') ||
-  process.env.REACT_APP_OSS_WORKDIR ||
+  getEnv('REACT_APP_OSS_WORKDIR') ||
   '/workspace'; // 기존 값 유지하면 여기에
 
 async function _fetchJSON(url, options = {}) {
