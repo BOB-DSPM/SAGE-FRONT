@@ -106,3 +106,46 @@ package.json에 react, recharts, lucide-react, tailwindcss가 포함되어 있�
 npm start
 
 http://localhost:3000 에서 실행
+
+---
+
+## Docker 및 AWS Marketplace 가이드
+
+AWS Marketplace 컨테이너 요구 사항(보안 정책, 고객 데이터/사용 지침, 비루트 실행 등)에 맞추기 위해 다음과 같은 구성을 제공합니다.
+
+- **환경 변수 기반 설정**: 모든 API 엔드포인트는 `REACT_APP_*` 빌드 인자를 통해 주입합니다. Docker 빌드 시 필요한 호스트를 전달해 하드코딩된 IP를 제거했습니다.
+- **비루트 실행**: NGINX 단계에서 `/usr/share/nginx/html` 등 필요한 경로의 소유권을 `nginx` 사용자에게 위임하고, 기본 포트를 8080으로 조정한 뒤 `USER nginx` 상태로 컨테이너를 실행합니다.
+- **정적 자격 증명 제거**: 코드베이스에 API 키/비밀번호를 포함하지 않으며, 런타임 값은 배포 환경에서 환경 변수 혹은 외부 비밀 관리자를 통해 주입하도록 구성되어 있습니다.
+- **셀프 서비스 배포**: 아래 절차만 따르면 외부 의존성 승인 없이 누구나 이미지를 빌드/실행할 수 있습니다.
+
+### 빌드
+
+```bash
+cd dspm_dashboard
+docker build -t dspm-dashboard \
+  --build-arg REACT_APP_API_HOST=<HOST> \
+  --build-arg REACT_APP_AEGIS_API_BASE=<URL> \
+  --build-arg REACT_APP_COLLECTOR_API_BASE=<URL> \
+  . 
+```
+
+필요한 `REACT_APP_*` 값을 모두 전달해 주세요. 지정하지 않은 인자는 `localhost` 및 기본 포트 값으로 빌드됩니다.
+
+### 로컬 실행
+
+```bash
+docker run -d --name dspm-dashboard \
+  -p 8080:8080 \
+  dspm-dashboard
+```
+
+NGINX는 8080 포트에서 비루트로 동작하므로, 외부에 80/TLS 포트를 노출하려면 로드밸런서나 리버스 프록시에서 포트 매핑을 구성하면 됩니다.
+
+### AWS Marketplace 배포 체크리스트
+
+1. **이미지 스캔**: Amazon ECR로 푸시한 후 ECR 이미지 스캔을 활성화해 알려진 취약성이 없는지 확인합니다.
+2. **비밀 분리**: 고객 환경에서 필요한 자격 증명은 AWS Secrets Manager 또는 Kubernetes `Secret` 등을 사용해 주입하고, README/사용 지침에 해당 절차를 명시합니다.
+3. **배포 문서화**: AWS Marketplace 사용 지침에는 위 빌드·실행 명령, 필요한 `REACT_APP_*` 목록, 외부 종속성(예: API 엔드포인트 접근 권한)을 포함해야 합니다.
+4. **플랫폼 호환성**: 이미지는 Linux 컨테이너로 빌드되며 Amazon ECS/EKS/Fargate에서 바로 실행할 수 있습니다. 필요 시 Helm 차트나 CloudFormation 템플릿으로 패키징하여 고객이 셀프 서비스로 배포하도록 지원합니다.
+
+위 체크리스트를 따르면 AWS Marketplace 판매자 설명서의 컨테이너 기반 제품 요구 사항을 충족하는 빌드/배포 파이프라인을 구성할 수 있습니다.
