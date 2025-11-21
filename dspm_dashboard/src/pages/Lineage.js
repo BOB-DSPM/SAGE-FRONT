@@ -1357,7 +1357,7 @@ const Lineage = () => {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <Database className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 text-lg font-medium">파이프라인을 선택하세요</p>
+              <p className="text-gray-600 text-sm font-medium">파이프라인을 선택하세요</p>
             </div>
           </div>
         )}
@@ -1796,22 +1796,22 @@ const Lineage = () => {
               <p className="text-sm text-gray-600">Overall Status</p>
               <div className="flex items-center gap-2 mt-1">
                 {getStatusIcon(lineageData.summary.overallStatus)}
-                <p className="text-xl font-bold">{safeValue(lineageData.summary.overallStatus)}</p>
+              <p className="text-lg font-semibold">{safeValue(lineageData.summary.overallStatus)}</p>
               </div>
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm border">
               <p className="text-sm text-gray-600">Failed Steps</p>
-              <p className="text-2xl font-bold text-red-600">
+              <p className="text-xl font-bold text-red-600">
                 {lineageData.summary.nodeStatus?.Failed || 0}
               </p>
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm border">
               <p className="text-sm text-gray-600">Total Steps</p>
-              <p className="text-2xl font-bold">{nodes.length}</p>
+              <p className="text-xl font-bold">{nodes.length}</p>
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm border">
               <p className="text-sm text-gray-600">Duration</p>
-              <p className="text-2xl font-bold">{formatDuration(lineageData.summary.elapsedSec)}</p>
+              <p className="text-xl font-bold">{formatDuration(lineageData.summary.elapsedSec)}</p>
             </div>
           </div>
         </div>

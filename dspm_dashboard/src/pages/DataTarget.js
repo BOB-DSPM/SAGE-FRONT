@@ -208,8 +208,8 @@ const DataTarget = ({ activeTab }) => {
         </div>
       )}
 
-      {/* ⬇️ 여기만 테두리 추가: AWS 리소스 인벤토리 박스 */}
-      <div className="bg-white border-2 border-gray-300 rounded-2xl overflow-hidden">
+      {/* ⬇️ AWS 리소스 인벤토리 박스: 텍스트 축소 + 얇은 테두리 */}
+      <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden text-sm">
         <DataTargetList
           inventoryData={inventoryData}
           loading={loadingInventory}

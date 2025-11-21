@@ -97,7 +97,7 @@ function maxMtime(files = []) {
 // ─ UI frags ─
 function Section({ title, children, right }) {
   return (
-    <div className="bg-white p-5 rounded-2xl shadow-sm border">
+    <div className="bg-white p-5 rounded-2xl shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <div className="text-base font-medium">{title}</div>
         {right}
@@ -121,7 +121,7 @@ function Badge({ children, tone = "gray" }) {
 function Collapsible({ title, children, defaultOpen = false, right }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border rounded-xl">
+    <div className="bg-white rounded-xl shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -145,7 +145,7 @@ function ButtonLink({ href, children, downloadName }) {
       href={href}
       target={downloadName ? undefined : "_blank"}
       rel={downloadName ? undefined : "noreferrer"}
-      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50"
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-50"
       {...(downloadName ? { download: downloadName } : {})}
     >
       {children}
@@ -165,7 +165,7 @@ function Copyable({ text }) {
   return (
     <button
       onClick={onCopy}
-      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-gray-50"
+      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md hover:bg-gray-50"
     >
       {copied ? <ClipboardCheck className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
       {copied ? "Copied" : "Copy"}

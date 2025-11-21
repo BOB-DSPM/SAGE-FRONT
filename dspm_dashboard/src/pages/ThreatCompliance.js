@@ -303,21 +303,21 @@ const ThreatCompliance = () => {
       )}
 
       {selectedFramework && !loading && safeRequirements.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24">
-          <ClipboardList className="w-24 h-24 text-gray-300 mb-6" />
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">프레임워크 데이터가 없습니다.</h3>
+        <div className="flex flex-col items-center justify-center py-16 text-sm">
+          <ClipboardList className="w-16 h-16 text-gray-300 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-700 mb-1">프레임워크 데이터가 없습니다.</h3>
           <p className="text-gray-500">API 연결 상태를 확인해주세요.</p>
         </div>
       )}
 
       {selectedFramework && !loading && safeRequirements.length > 0 && (
-        <div className={`bg-white rounded-lg shadow-sm border transition-all ${sidePanelOpen ? 'mr-[50%]' : ''}`}>
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">{selectedFramework}</h2>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">{filteredRequirements.length} 항목</span>
-                <div className="flex items-center gap-3">
+        <div className={`bg-white rounded-lg shadow-sm border border-gray-100 text-sm transition-all ${sidePanelOpen ? 'mr-[50%]' : ''}`}>
+          <div className="p-4 border-b border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-900">{selectedFramework}</h2>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">{filteredRequirements.length} 항목</span>
+                <div className="flex items-center gap-2">
                   {streaming && (
                     <span className="text-xs text-gray-500">
                       진행 {progress.executed}/{progress.total}
@@ -326,7 +326,7 @@ const ThreatCompliance = () => {
                   <button
                     onClick={() => auditAllFramework(selectedFramework)}
                     disabled={auditing}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     <Play className="w-4 h-4" />
                     {auditing ? '진단 중...' : '전체 진단'}
@@ -336,7 +336,7 @@ const ThreatCompliance = () => {
             </div>
 
             {/* 위협 그룹 필터 */}
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap gap-2">
               {threatGroups.map(group => (
                 <button
                   key={group}
@@ -344,10 +344,10 @@ const ThreatCompliance = () => {
                     setSelectedThreatGroup(group);
                     setCurrentPage(1);
                   }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
                     selectedThreatGroup === group
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-500 border-[2.5px] border-gray-300'
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border-gray-200'
                   }`}
                 >
                   {group}

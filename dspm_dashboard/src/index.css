@@ -1,58 +1,12 @@
-/* Tailwind 지시어는 맨 위에 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ==============================
-   전역 레이아웃 리셋
-   (여기 추가가 핵심)
-   ============================== */
-html,
-body,
-#root {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-}
-
-/* CRA 기본 스타일들 */
-.App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #24272c;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
-
-.App-link {
-  color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-/* 본문 폰트 설정 */
+/* 베이스 톤 */
+html, body, #root { height: 100%; }
 body {
+  @apply bg-gray-50 text-gray-900;
+  margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
@@ -64,53 +18,17 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
-/* ------------------------------
-   Tailwind layer: components
-   ------------------------------ */
-@layer components {
-  /* 카드/패널 기본 두께 ↑, 대비 ↑ */
-  .card {
-    /* 두께 3px, 기본 회색보다 진한 톤 */
-    @apply bg-white border-[3px] border-gray-400 rounded-2xl shadow-sm transition-all;
-  }
-  .panel {
-    @apply bg-white border-[3px] border-gray-400 rounded-xl transition-all;
-  }
-  .table-wrap {
-    @apply border-[3px] border-gray-400 rounded-xl overflow-hidden;
-  }
-  .section-title {
-    @apply text-gray-900 font-semibold;
-  }
+/* 공통 유틸 */
+.h-title    { @apply text-xl font-semibold text-gray-900; }
+.h-subtitle { @apply text-sm text-gray-600; }
 
-  /* hover/active/focus 시 더 “강하게” 보이도록 */
-  .is-hoverable {
-    @apply hover:border-gray-500 hover:shadow-md;
-  }
-  .is-strong-focus {
-    /* 접근성 좋은 포커스 링 */
-    @apply focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-300 focus-visible:ring-offset-1;
-  }
-  .is-selected {
-    /* 선택 상태는 컬러 강조 + 링 */
-    @apply border-primary-600 ring-2 ring-primary-400 ring-offset-1;
-  }
-}
+.page-pad   { @apply px-6 py-8; }
+.card       { @apply bg-white border border-gray-100 rounded-xl shadow-sm; }
+.card-pad   { @apply p-4 md:p-5; }
 
-/* ------------------------------
-   Tailwind layer: utilities
-   ------------------------------ */
-@layer utilities {
-  /* 임의 두께 프리셋: 클래스 한 줄로 보더 더 두껍게 */
-  .border-3 { @apply border-[3px]; }    /* 3px */
-  .border-4p { @apply border-[4px]; }   /* 4px */
+.btn        { @apply inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 shadow-sm px-3 py-2 hover:bg-gray-50; }
+.btn-ghost  { @apply inline-flex items-center gap-1 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-2 py-1; }
 
-  /* 대비 강한 회색/초록 프리셋 */
-  .border-contrast { @apply border-gray-500; }
-  .border-strong-primary { @apply border-primary-600; }
-
-  /* ▶ 콘텐츠 영역에 아주 얕은 인셋 효과(선택) */
-  .content-wrap {
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
-  }
-}
+/* 사이드바 활성/호버 색감을 초록 팔레트에 맞게 */
+.sidebar-active { @apply bg-gray-100 text-gray-800 border-r-2 border-gray-200; }
+.sidebar-hover  { @apply text-gray-700 hover:bg-gray-50; }
