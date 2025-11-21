@@ -1,106 +1,102 @@
-# DSPM Dashboard
+# SAGE-FRONT
 
----
+데이터 보안 포스처 관리(DSPM) 대시보드의 프론트엔드 애플리케이션입니다.
+
+## 기술 스택
+
+- **React** - UI 라이브러리
+- **JavaScript** - 프로그래밍 언어
+- **Tailwind CSS** - 스타일링
+- **Recharts** - 데이터 시각화
+- **Lucide React** - 아이콘
+
+## 주요 기능
+
+- **Data Target**: 데이터 리소스 목록 및 관리
+- **Aegis Results**: 개인정보 탐지 결과 확인
+- **Policies**: 정책 준수 상태 확인
+- **Lineage**: 데이터 흐름 시각화
+- **Threat Compliance**: 위협 및 컴플라이언스 감사
+- **Opensource**: 오픈소스 컴플라이언스 관리
 
 ## Project Structure
 ```
 dspm_dashboard/
+├── public/
+│   ├── env-config.js            # 런타임 환경 설정
+│   └── index.html
 ├── src/
-│   ├── assets/                  
-│   │   └── # 프로젝트에서 사용하는 이미지, 아이콘 등 정적 자원
-│   ├── components/              
-│   │   ├── navigation/
-│   │   │   └── Sidebar.js       
-│   │   │       # 좌측 사이드바 탭 UI를 담당, activeTab prop으로 페이지 전환 제어
-│   │   ├── cards/
-│   │   │   └── KPI.js           
-│   │   │       # KPI 카드 컴포넌트, title, value, color, icon prop으로 재사용 가능
-│   │   ├── charts/
-│   │   │   ├── PieChartComponent.js
-│   │   │   │   # Pie 차트 컴포넌트, data prop으로 데이터 시각화
-│   │   │   └── AreaChartComponent.js
-│   │   │       # Alerts Trend 차트용 Area 차트 컴포넌트
-│   │   └── inventory/
-│   │       └── InventoryList.js
-│   │           # Inventory 탭 리스트 UI, inventoryData와 loading 상태를 prop으로 받음
-│   ├── data/                    
+│   ├── assets/                  # 정적 자산
+│   │   ├── aws-icons/           # AWS 서비스 아이콘
+│   │   └── oss/                 # 오픈소스 관련 자산
+│   ├── components/              # 재사용 가능한 UI 컴포넌트
+│   │   ├── DataTarget/          # 데이터 타겟 컴포넌트
+│   │   ├── cards/               # 카드 컴포넌트
+│   │   ├── charts/              # 차트 컴포넌트
+│   │   └── navigation/          # 네비게이션 컴포넌트
+│   ├── config/
+│   │   ├── api.js               # API 엔드포인트 설정
+│   │   └── runtimeEnv.js        # 런타임 환경 변수
+│   ├── data/                    # 정적 데이터
 │   │   ├── complianceScores.js
-│   │   │   # 정책/컴플라이언스 점수 mock 데이터
-│   │   ├── issuesBySeverity.js
-│   │   │   # 심각도별 이슈 mock 데이터
 │   │   ├── dataClassification.js
-│   │   │   # 데이터 타입별 분류 mock 데이터
-│   │   └── index.js             
-│   │       # 위 3개의 데이터를 한 번에 export
-│   ├── hooks/
-│   │   └── useInventory.js      
-│   │       # Inventory API fetch 커스텀 훅, activeTab에 따라 fetch 수행
-│   ├── pages/                   
-│   │   ├── Overview.js          
-│   │   │   # Overview 탭 페이지, KPI 카드 + Pie차트 + Issues by Severity + Compliance 등 조합
-│   │   ├── Inventory.js         
-│   │   │   # Inventory 탭 페이지, useInventory 훅과 InventoryList 컴포넌트 사용
-│   │   ├── Alerts.js            
-│   │   │   # Alerts 탭 페이지, 최근 보안 알림 목록 UI
-│   │   ├── Policies.js          
-│   │   │   # Policies 탭 페이지, 컴플라이언스 점수 카드 UI
-│   │   └── Lineage.js           
-│   │       # Lineage 탭 페이지, 데이터 흐름 시각화 UI
-│   ├── App.js                   
-│   │   # 최상위 Dashboard 페이지, Sidebar와 페이지 렌더링 로직 포함
-│   └── index.js                 
-│       # React 엔트리 포인트, ReactDOM.render 호출
-├── package.json                 
-│   # 프로젝트 의존성 및 실행 스크립트
-├── tailwind.config.js           
-│   # TailwindCSS 설정
-└── postcss.config.js            
-    # PostCSS 설정
+│   │   ├── issuesBySeverity.js
+│   │   └── index.js
+│   ├── hooks/                   # 커스텀 훅
+│   │   ├── useDataTarget.js     # 데이터 타겟 훅
+│   │   └── useLineage.js        # 라인리지 훅
+│   ├── pages/                   # 페이지 컴포넌트
+│   │   ├── Overview.js          # 대시보드 개요
+│   │   ├── DataTarget.js        # 데이터 타겟 관리
+│   │   ├── AegisResults.js      # Aegis 탐지 결과
+│   │   ├── Alerts.js            # 보안 알림
+│   │   ├── Policies.js          # 정책 관리
+│   │   ├── Policies2.js         # 정책 관리 v2
+│   │   ├── Lineage.js           # 데이터 라인리지
+│   │   ├── ThreatCompliance.js  # 위협 컴플라이언스
+│   │   ├── ThreatComplianceDetail.js
+│   │   ├── Opensource.js        # 오픈소스 관리
+│   │   ├── OpensourceDetail.js
+│   │   └── OssEvidence.js       # OSS 증적
+│   ├── services/                # API 서비스
+│   │   ├── aegisApi.js          # Aegis API
+│   │   ├── complianceApi.js     # Compliance API
+│   │   ├── evidenceApi.js       # Evidence API
+│   │   ├── lineageApi.js        # Lineage API
+│   │   ├── ossApi.js            # OSS API
+│   │   └── sessionService.js    # 세션 관리
+│   ├── App.js                   # 메인 앱 컴포넌트
+│   └── index.js                 # 앱 진입점
+├── docker-entrypoint.sh         # Docker 시작 스크립트
+├── docker-stop.sh               # Docker 종료 스크립트
+├── Dockerfile                   # Docker 이미지 빌드
+├── nginx.conf                   # NGINX 설정
+├── package.json
+├── postcss.config.js
+└── tailwind.config.js
 ```
----
-
-## 기능
-
-- Overview 탭: 주요 지표(Security Score, Total Assets, Active Alerts, Compliance) 표시
-- Inventory 탭: 데이터 리소스 목록
-- Alerts 탭: 최근 보안 알림
-- Policies 탭: 정책 준수 상태
-- Lineage 탭: 데이터 흐름 시각화
-- 검색(Search) 및 필터(Filter) 기능
-- Recharts 기반 반응형 차트
-
----
-
-## 기술 스택
-
-- React (Functional Component + Hooks)
-- Recharts (BarChart, PieChart, AreaChart 등)
-- Lucide React (아이콘)
-- Tailwind CSS (스타일링)
-
----
 
 ## 시작하기
 
 ### 사전 준비
 
 **Node.js**와 **npm**이 설치되어 있어야 합니다.
+- Node.js 16 이상
+- npm
 
 bash
 node -v
 npm -v
 
 ### 설치
+```bash
+# 저장소 클론
+git clone https://github.com/BOB-DSPM/SAGE-FRONT.git
+cd SAGE-FRONT/dspm_dashboard
 
-레포지토리 클론:
-
-git clone <YOUR_REPO_URL>
-cd <YOUR_REPO_DIRECTORY>
-
-의존성 설치:
-
+# 의존성 설치
 npm install
-package.json에 react, recharts, lucide-react, tailwindcss가 포함되어 있어야 합니다.
+```
 
 ### 대시보드 실행
 npm start
