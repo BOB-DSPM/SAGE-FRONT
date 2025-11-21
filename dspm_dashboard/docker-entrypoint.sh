@@ -8,7 +8,8 @@ json_escape() {
 write_env_file() {
   {
     printf 'window._env_ = {\n'
-    printf '  REACT_APP_API_HOST: "%s",\n' "$(json_escape "${REACT_APP_API_HOST:-localhost}")"
+    # 기본 호스트를 3.37.174.51로 강제한다 (env로 덮어쓸 수 있음)
+    printf '  REACT_APP_API_HOST: "%s",\n' "$(json_escape "${REACT_APP_API_HOST:-3.37.174.51}")"
     printf '  REACT_APP_OSS_BASE: "%s",\n' "$(json_escape "${REACT_APP_OSS_BASE:-}")"
     printf '  REACT_APP_LINEAGE_API_BASE: "%s",\n' "$(json_escape "${REACT_APP_LINEAGE_API_BASE:-}")"
     printf '  REACT_APP_AUDIT_API_BASE: "%s",\n' "$(json_escape "${REACT_APP_AUDIT_API_BASE:-}")"

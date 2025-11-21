@@ -1,5 +1,5 @@
 window._env_ = {
-  REACT_APP_API_HOST: "localhost",
+  REACT_APP_API_HOST: "",
   REACT_APP_OSS_BASE: "",
   REACT_APP_LINEAGE_API_BASE: "",
   REACT_APP_AUDIT_API_BASE: "",
