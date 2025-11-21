@@ -1,6 +1,11 @@
 // src/services/apiBase.js 같은 곳
-// 요청이 계속 localhost로 나가는 문제를 막기 위해 호스트를 고정한다.
-const HOST = '3.37.174.51';
+import { getEnv } from './runtimeEnv';
+
+// 런타임/빌드 환경변수로 우선 설정하고, 없으면 브라우저 호스트 → 최종 fallback IP
+const DEFAULT_HOST =
+  (typeof window !== 'undefined' && window.location?.hostname) || '3.37.174.51';
+const HOST = getEnv('REACT_APP_API_HOST') || DEFAULT_HOST;
+
 const http = (port, suffix = '') => `http://${HOST}:${port}${suffix}`;
 
 // ─ 개별 서비스 BASE URL ─
