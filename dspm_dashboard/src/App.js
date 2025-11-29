@@ -10,7 +10,6 @@ import {
 //import Login from './pages/Login';
 import Header from './components/navigation/Header';
 import Sidebar from './components/navigation/Sidebar';
-import Overview from './pages/Overview';
 import Inventory from './pages/DataTarget';
 //import Alerts from './pages/Alerts';
 import Policies from './pages/Policies';
@@ -69,10 +68,8 @@ const tabs = [
 
 // 현재 이 Layout은 사용 안 하고 있어서 그대로 두되, URL 연동은 MainDashboard 쪽에서만 처리
 const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('data-target');
   const [componentKeys, setComponentKeys] = useState({
-    overview: 0,
-    //'aws-setup': 0,
     'data-target': 0,
     lineage: 0,
     policies: 0,
@@ -86,7 +83,7 @@ const DashboardLayout = ({ children, onLogout, showSidebar = true }) => {
 
   const handleLogout = () => {
     onLogout();
-    setActiveTab('overview');
+    setActiveTab('data-target');
   };
 
   const handleTabChange = (tabId) => {
@@ -115,7 +112,6 @@ const MainDashboard = ({ onLogout }) => {
   const navigate = useNavigate();
 
   const TAB_IDS = [
-    'overview',
     'data-target',
     'lineage',
     'policies',
@@ -131,15 +127,13 @@ const MainDashboard = ({ onLogout }) => {
       ? pathname.replace('/dashboard', '') || '/'
       : pathname;
 
-    const segment = path.replace(/^\/+/, '').split('/')[0]; // "overview", "data-target" 등
+    const segment = path.replace(/^\/+/, '').split('/')[0]; // "data-target", "lineage" 등
     if (TAB_IDS.includes(segment)) return segment;
-    return 'overview';
+    return 'data-target';
   };
 
   const [activeTab, setActiveTab] = useState(() => getTabFromPath(location.pathname));
   const [componentKeys, setComponentKeys] = useState({
-    overview: 0,
-    //'aws-setup': 0,
     'data-target': 0,
     lineage: 0,
     policies: 0,
@@ -172,8 +166,6 @@ const MainDashboard = ({ onLogout }) => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'overview':
-        return <Overview key={componentKeys.overview} securityScoreData={{ score: 79 }} />;
       case 'data-target':
         return <Inventory key={componentKeys['data-target']} activeTab={activeTab} />;
       //case 'alerts':
@@ -190,10 +182,8 @@ const MainDashboard = ({ onLogout }) => {
         return <Opensource key={componentKeys.opensource} />;
       case 'oss-evidence':
         return <OssEvidence key={componentKeys['oss-evidence']} />;
-      //case 'aws-setup':
-      //  return <AwsSetup key={componentKeys['aws-setup']} />;
       default:
-        return <Overview key={componentKeys.overview} securityScoreData={{ score: 79 }} />;
+        return <Inventory key={componentKeys['data-target']} activeTab={activeTab} />;
     }
   };
 
@@ -218,10 +208,10 @@ const App = () => {
   return (
     <BrowserRouter basename="/dashboard">
       <Routes>
-        {/* 기본 진입 시 /overview 로 리다이렉트 */}
-        <Route path="/" element={<Navigate to="/overview" replace />} />
+        {/* 기본 진입 시 /data-target 로 리다이렉트 */}
+        <Route path="/" element={<Navigate to="/data-target" replace />} />
 
-        {/* 메인 대시보드: /overview, /data-target, /lineage, /policies2, ... 전부 여기서 처리 */}
+        {/* 메인 대시보드: /data-target, /lineage, /policies2, ... 전부 여기서 처리 */}
         <Route path="/*" element={<MainDashboard onLogout={() => setIsLoggedIn(false)} />} />
 
         {/* Aegis 결과 상세 페이지 */}
