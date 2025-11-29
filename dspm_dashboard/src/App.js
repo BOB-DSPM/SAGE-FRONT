@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 
 const tabs = [
-  { id: 'overview', name: '메인', icon: Activity },
+  // { id: 'overview', name: '메인', icon: Activity },
   //{ id: 'aws-setup', name: 'AWS Setup', icon: Cloud },
   { id: 'data-target', name: '데이터 수집/식별', icon: FolderSearch },
   { id: 'lineage', name: '데이터 라인리지', icon: GitBranch },
