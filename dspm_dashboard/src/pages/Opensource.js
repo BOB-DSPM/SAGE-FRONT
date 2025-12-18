@@ -95,7 +95,7 @@ export default function Opensource() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="검색 (이름/코드/카테고리/설명)"
-          className="w-full md:w-96 border rounded-lg px-3 py-2"
+          className="w-full md:w-96 border-[3px] border-gray-500 rounded-xl px-3 py-2 shadow-sm focus:outline-none focus-visible:ring-4 focus-visible:ring-primary-300 focus-visible:ring-offset-1"
         />
         {loading && <span className="text-sm text-gray-500">로딩 중…</span>}
       </div>
@@ -109,7 +109,7 @@ export default function Opensource() {
             <button
               key={it.code}
               onClick={() => onCardClick(it)}
-              className="relative text-left border rounded-xl p-4 bg-white hover:shadow-md transition focus:outline-none"
+              className="relative text-left border-[3px] border-gray-400 rounded-2xl p-4 bg-white shadow-sm hover:shadow-md transition focus:outline-none focus-visible:ring-4 focus-visible:ring-primary-300 focus-visible:ring-offset-1"
             >
               <div
                 className="absolute top-3 right-3"
@@ -121,7 +121,7 @@ export default function Opensource() {
                     target="_blank"
                     rel="noreferrer"
                     aria-label={`${it.name} GitHub로 이동`}
-                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg border hover:bg-gray-50"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg border-[2.5px] border-gray-400 hover:bg-gray-50 hover:border-gray-500 shadow-sm"
                   >
                     <Github className="w-5 h-5" />
                   </a>

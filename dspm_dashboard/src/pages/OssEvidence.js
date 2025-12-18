@@ -124,7 +124,7 @@ const OssEvidence = () => {
             type="button"
             onClick={loadSummary}
             disabled={loading}
-            className="inline-flex items-center gap-1 px-3 py-2 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1 px-3 py-2 text-sm rounded-md border-[2.5px] border-gray-400 bg-white hover:bg-gray-50 hover:border-gray-500 disabled:opacity-60 shadow-sm"
           >
             <RefreshCw className="w-4 h-4" />
             {loading ? "갱신 중..." : "최신 실행 요약 새로고침"}
@@ -133,7 +133,7 @@ const OssEvidence = () => {
             type="button"
             onClick={handleDownload}
             disabled={downloadLoading || selectedList.length === 0}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-60"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-60 shadow-sm"
           >
             <Download className="w-4 h-4" />
             {downloadLoading ? "보고서 생성 중..." : "PDF 증적 보고서 다운로드"}
@@ -142,7 +142,7 @@ const OssEvidence = () => {
       </div>
 
       {/* 선택 영역 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div className="bg-white rounded-xl shadow-sm border-[3px] border-gray-400 p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-800">
             포함할 오픈소스 도구 선택
@@ -151,14 +151,14 @@ const OssEvidence = () => {
             <button
               type="button"
               onClick={selectAll}
-              className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50"
+              className="px-2 py-1 rounded border-[2.5px] border-gray-400 hover:bg-gray-50 hover:border-gray-500 shadow-sm"
             >
               전체 선택
             </button>
             <button
               type="button"
               onClick={clearAll}
-              className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50"
+              className="px-2 py-1 rounded border-[2.5px] border-gray-400 hover:bg-gray-50 hover:border-gray-500 shadow-sm"
             >
               모두 해제
             </button>
@@ -173,10 +173,10 @@ const OssEvidence = () => {
                 key={tool.code}
                 type="button"
                 onClick={() => toggleCode(tool.code)}
-                className={`flex items-start gap-3 w-full rounded-lg border px-3 py-2 text-left transition ${
+                className={`flex items-start gap-3 w-full rounded-lg border-[3px] px-3 py-2 text-left transition ${
                   checked
-                    ? "border-primary-500 bg-primary-50/80"
-                    : "border-gray-200 hover:bg-gray-50"
+                    ? "border-primary-600 bg-primary-50/80 shadow-sm"
+                    : "border-gray-300 hover:bg-gray-50"
                 }`}
               >
                 <div className="mt-0.5">
@@ -205,14 +205,14 @@ const OssEvidence = () => {
 
       {/* 에러 메시지 */}
       {error && (
-        <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+        <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border-[3px] border-red-200 rounded-lg px-3 py-2 shadow-sm">
           <AlertCircle className="w-4 h-4 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
       {/* 최신 실행 요약 테이블 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div className="bg-white rounded-xl shadow-sm border-[3px] border-gray-400 p-4">
         <h2 className="text-sm font-semibold text-gray-800 mb-3">
           최신 실행 요약
         </h2>

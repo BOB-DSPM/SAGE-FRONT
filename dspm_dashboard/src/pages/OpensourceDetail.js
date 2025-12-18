@@ -97,7 +97,7 @@ function maxMtime(files = []) {
 // ─ UI frags ─
 function Section({ title, children, right }) {
   return (
-    <div className="bg-white p-5 rounded-2xl shadow-sm border">
+    <div className="bg-white p-5 rounded-2xl shadow-sm border-[3px] border-gray-400">
       <div className="flex items-center justify-between mb-3">
         <div className="text-base font-medium">{title}</div>
         {right}
@@ -121,7 +121,7 @@ function Badge({ children, tone = "gray" }) {
 function Collapsible({ title, children, defaultOpen = false, right }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border rounded-xl">
+    <div className="border-[3px] border-gray-300 rounded-xl shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -145,7 +145,7 @@ function ButtonLink({ href, children, downloadName }) {
       href={href}
       target={downloadName ? undefined : "_blank"}
       rel={downloadName ? undefined : "noreferrer"}
-      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50"
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border-[2.5px] border-gray-400 hover:bg-gray-50 hover:border-gray-500 shadow-sm"
       {...(downloadName ? { download: downloadName } : {})}
     >
       {children}
@@ -165,7 +165,7 @@ function Copyable({ text }) {
   return (
     <button
       onClick={onCopy}
-      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border hover:bg-gray-50"
+      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border-[2.5px] border-gray-400 hover:bg-gray-50 hover:border-gray-500 shadow-sm"
     >
       {copied ? <ClipboardCheck className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
       {copied ? "Copied" : "Copy"}
@@ -434,7 +434,7 @@ export default function OpensourceDetail() {
           <div className="flex items-center gap-3">
             <Link
               to="/opensource"
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-white bg-gray-100"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border-[2.5px] border-gray-400 hover:bg-white hover:border-gray-500 bg-gray-100 shadow-sm"
             >
               <ArrowLeft className="w-4 h-4" />
               Dashboard
@@ -449,7 +449,7 @@ export default function OpensourceDetail() {
         {!loading && detail && (
           <div className="space-y-6">
             {/* Header card */}
-            <div className="flex items-start gap-4 bg-white p-5 rounded-2xl shadow-sm border">
+            <div className="flex items-start gap-4 bg-white p-5 rounded-2xl shadow-sm border-[3px] border-gray-400">
               <div className="shrink-0">
                 {iconSrc ? (
                   <img src={iconSrc} alt={`${detail.name} icon`} className="w-12 h-12 rounded-lg" />
