@@ -49,6 +49,65 @@ const CATEGORY_META = {
   },
 };
 
+// 교차 검증 API가 비어 있을 때를 위한 데모용 보존기간 위반 데이터
+const RETENTION_DEMO_DATA = {
+  count: 3,
+  matched_ids: ['cust-1023', 'cust-2048', 'cust-3410'],
+  matched_files: [
+    {
+      bucket: 'aegis-backup-prod',
+      file_key: 'backup/2023-11-01/customer_export.csv',
+      file_size: 268432,
+      found_ids: ['cust-1023', 'cust-2048'],
+      matches: [
+        {
+          id: 'cust-1023',
+          row_number: 42,
+          row_data: {
+            customer_id: 'cust-1023',
+            name: 'Kim, A',
+            email: 'a.kim@example.com',
+            expired_at: '2023-10-30',
+          },
+        },
+        {
+          id: 'cust-2048',
+          row_number: 107,
+          row_data: {
+            customer_id: 'cust-2048',
+            name: 'Lee, B',
+            email: 'b.lee@example.com',
+            expired_at: '2023-10-28',
+          },
+        },
+      ],
+    },
+    {
+      bucket: 'aegis-backup-prod',
+      file_key: 'backup/2023-10-25/order_history.json',
+      file_size: 145120,
+      found_ids: ['cust-3410'],
+      matches: [
+        {
+          id: 'cust-3410',
+          row_number: 12,
+          row_data: {
+            customer_id: 'cust-3410',
+            order_id: 'ORD-9981',
+            status: 'canceled',
+            expired_at: '2023-09-30',
+          },
+        },
+      ],
+    },
+  ],
+  rds_ids_checked: ['cust-1023', 'cust-2048', 'cust-3410', 'cust-4100'],
+  not_found_ids: ['cust-4100'],
+  total_matched_ids: 3,
+  total_matched_files: 2,
+  isDemo: true,
+};
+
 const AegisResults = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -108,13 +167,7 @@ const AegisResults = () => {
 
   const processRetentionViolations = () => {
     if (!crossCheckReport || !crossCheckReport.s3_scan) {
-      setRetentionViolations({
-        count: 0,
-        matched_ids: [],
-        matched_files: [],
-        rds_ids_checked: [],
-        not_found_ids: [],
-      });
+      setRetentionViolations({ ...RETENTION_DEMO_DATA });
       return;
     }
 
@@ -132,7 +185,7 @@ const AegisResults = () => {
       file.found_ids?.forEach((id) => filteredFoundIds.add(id));
     });
 
-    setRetentionViolations({
+    const processedViolations = {
       count: filteredFoundIds.size,
       matched_ids: Array.from(filteredFoundIds),
       matched_files: filteredMatchedFiles,
@@ -140,7 +193,18 @@ const AegisResults = () => {
       not_found_ids: s3Matches.not_found_ids || [],
       total_matched_ids: s3Matches.found_ids?.length || 0,
       total_matched_files: s3Matches.matched_files?.length || 0,
-    });
+      isDemo: false,
+    };
+
+    const hasRealViolations =
+      processedViolations.count > 0 && processedViolations.matched_files.length > 0;
+
+    if (!hasRealViolations) {
+      setRetentionViolations({ ...RETENTION_DEMO_DATA });
+      return;
+    }
+
+    setRetentionViolations(processedViolations);
   };
 
   const handleRetentionCardClick = () => {
@@ -152,11 +216,9 @@ const AegisResults = () => {
   };
 
   useEffect(() => {
-    if (crossCheckReport) {
-      processRetentionViolations();
-    }
+    processRetentionViolations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [crossCheckReport]);
 
   useEffect(() => {
     loadData();
@@ -464,6 +526,11 @@ const AegisResults = () => {
                 <div className="mt-2 text-sm text-red-700 font-bold">⚠️ 위반 발견</div>
               ) : (
                 <div className="mt-2 text-sm text-green-700 font-semibold">✓ 정상</div>
+              )}
+              {retentionViolations.isDemo && (
+                <div className="mt-1 text-[12px] text-purple-700 font-semibold">
+                  데모 예시 데이터 표시 중
+                </div>
               )}
             </div>
           )}
@@ -859,6 +926,11 @@ const AegisResults = () => {
                   <p className="text-[15px] text-gray-700 mt-1">
                     선택한 S3 버킷에서 보존기간이 만료된 데이터가 남아있는 것을 발견했습니다.
                   </p>
+                  {retentionViolations.isDemo && (
+                    <div className="mt-3 px-3 py-2 rounded-md bg-purple-50 border border-purple-200 text-[14px] text-purple-800">
+                      실제 교차 검증 결과가 없는 환경이라 데모 예시 데이터를 표시합니다.
+                    </div>
+                  )}
                   {retentionViolations.total_matched_files >
                     retentionViolations.matched_files.length && (
                     <p className="text-[14px] text-orange-700 mt-1">
