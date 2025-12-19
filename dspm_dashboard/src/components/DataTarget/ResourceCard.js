@@ -88,7 +88,7 @@ const ResourceCard = ({ resource, onClick, isSelected, isDetailViewing }) => {
         ${isDetailViewing 
           ? 'bg-blue-50 border-blue-500 border-2 shadow-lg ring-2 ring-blue-200' 
           : isSelected
-            ? 'bg-green-50 border-green-400'
+            ? 'bg-primary-50 border-primary-400'
             : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
         }
       `}
@@ -98,7 +98,7 @@ const ResourceCard = ({ resource, onClick, isSelected, isDetailViewing }) => {
           isDetailViewing 
             ? 'bg-blue-100' 
             : isSelected 
-              ? 'bg-green-100' 
+              ? 'bg-primary-100' 
               : 'bg-white'
         }`}>
           {getIcon(resource.type)}

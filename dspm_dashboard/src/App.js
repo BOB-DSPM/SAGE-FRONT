@@ -50,7 +50,7 @@ const tabs = [
   // 아코디언 메뉴
   {
     id: 'audit',
-    name: '진단',
+    name: '보안위협 진단',
     icon: ClipboardList,
     children: [
       { id: 'policies2', name: '컴플라이언스', icon: ClipboardList },
@@ -60,8 +60,8 @@ const tabs = [
   //{ id: 'alerts', name: 'Alerts', icon: Bell },
   // { id: 'policies', name: 'Compliance Result', icon: BarChart3 },
 
-  { id: 'opensource', name: '오픈소스', icon: Boxes },
-  { id: 'oss-evidence', name: '증적 보고서', icon: FileText },
+  // { id: 'opensource', name: '오픈소스', icon: Boxes },
+  // { id: 'oss-evidence', name: '증적 보고서', icon: FileText },
 ];
 
 // 현재 이 Layout은 사용 안 하고 있어서 그대로 두되, URL 연동은 MainDashboard 쪽에서만 처리

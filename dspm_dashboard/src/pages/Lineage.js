@@ -1058,8 +1058,9 @@ const Lineage = () => {
       else if (pipeline.tags?.DomainName) domain = pipeline.tags.DomainName;
 
       await loadLineage(pipeline.name, region, domain);
+      await loadSchemas(pipeline.name, region);
     },
-    [loadLineage]
+    [loadLineage, loadSchemas]
   );
 
   const handleSchemaSelect = useCallback(

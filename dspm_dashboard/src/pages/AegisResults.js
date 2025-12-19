@@ -65,8 +65,8 @@ const RETENTION_DEMO_DATA = {
           row_number: 42,
           row_data: {
             customer_id: 'cust-1023',
-            name: 'Kim, A',
-            email: 'a.kim@example.com',
+            name: '최원겸',
+            email: 'gyum@naver.com',
             expired_at: '2023-10-30',
           },
         },
@@ -75,8 +75,8 @@ const RETENTION_DEMO_DATA = {
           row_number: 107,
           row_data: {
             customer_id: 'cust-2048',
-            name: 'Lee, B',
-            email: 'b.lee@example.com',
+            name: '이원찬',
+            email: 'wonjjani@gmail.com',
             expired_at: '2023-10-28',
           },
         },
@@ -440,10 +440,10 @@ const AegisResults = () => {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => handleResourceFilter(null)}
-                className={`px-4 py-2 rounded-lg text-[16px] font-semibold transition-colors ${
+                className={`px-4 py-2 rounded-lg text-[16px] font-semibold transition-colors border-2 ${
                   !selectedResource
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                    ? 'bg-primary-600 text-white border-primary-700'
+                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-300'
                 }`}
               >
                 전체 ({services.length}개)
@@ -452,10 +452,10 @@ const AegisResults = () => {
                 <button
                   key={idx}
                   onClick={() => handleResourceFilter(service)}
-                  className={`px-4 py-2 rounded-lg text-[16px] font-semibold transition-colors ${
+                  className={`px-4 py-2 rounded-lg text-[16px] font-semibold transition-colors border-2 ${
                     selectedResource === service
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                      ? 'bg-primary-600 text-white border-primary-700'
+                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-300'
                   }`}
                 >
                   {service}
@@ -502,7 +502,7 @@ const AegisResults = () => {
           ))}
 
           {/* 보존기간 만료 */}
-          {retentionViolations !== null && (
+              {retentionViolations !== null && (
             <div
               className={`bg-white rounded-xl p-6 shadow-sm border-[3px] cursor-pointer transition-all hover:shadow-md ${
                 retentionViolations.count > 0
@@ -526,11 +526,6 @@ const AegisResults = () => {
                 <div className="mt-2 text-sm text-red-700 font-bold">⚠️ 위반 발견</div>
               ) : (
                 <div className="mt-2 text-sm text-green-700 font-semibold">✓ 정상</div>
-              )}
-              {retentionViolations.isDemo && (
-                <div className="mt-1 text-[12px] text-purple-700 font-semibold">
-                  데모 예시 데이터 표시 중
-                </div>
               )}
             </div>
           )}
@@ -926,11 +921,6 @@ const AegisResults = () => {
                   <p className="text-[15px] text-gray-700 mt-1">
                     선택한 S3 버킷에서 보존기간이 만료된 데이터가 남아있는 것을 발견했습니다.
                   </p>
-                  {retentionViolations.isDemo && (
-                    <div className="mt-3 px-3 py-2 rounded-md bg-purple-50 border border-purple-200 text-[14px] text-purple-800">
-                      실제 교차 검증 결과가 없는 환경이라 데모 예시 데이터를 표시합니다.
-                    </div>
-                  )}
                   {retentionViolations.total_matched_files >
                     retentionViolations.matched_files.length && (
                     <p className="text-[14px] text-orange-700 mt-1">

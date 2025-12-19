@@ -94,14 +94,14 @@ const Sidebar = ({ tabs, activeTab, setActiveTab }) => {
                           className={`w-full flex items-center space-x-2 pl-10 pr-4 py-2.5 text-[16px] text-left rounded-md
                           transition-all duration-200 ${
                             isActiveChild
-                              ? 'bg-green-200 text-green-950 border-r-[6px] border-green-800 font-semibold shadow-md ring-2 ring-green-500/70'
+                              ? 'bg-primary-100 text-primary-900 border-r-[6px] border-primary-700 font-semibold shadow-md ring-2 ring-primary-300/70'
                               : 'text-gray-700 hover:bg-gray-100'
                           }`}
                         >
                           {ChildIcon && (
                             <ChildIcon
                               className={`w-4 h-4 ${
-                                isActiveChild ? 'text-green-900' : 'text-gray-600'
+                                isActiveChild ? 'text-primary-800' : 'text-gray-600'
                               }`}
                             />
                           )}
@@ -127,12 +127,12 @@ const Sidebar = ({ tabs, activeTab, setActiveTab }) => {
               } px-4 py-3 text-[17px] font-semibold text-left rounded-md border-l-[3px]
               transition-all duration-200 ${
                 isActiveTop
-                  ? 'bg-green-200 text-green-950 border-green-800 shadow-md ring-2 ring-green-500/70'
+                  ? 'bg-primary-100 text-primary-900 border-primary-700 shadow-md ring-2 ring-primary-300/70'
                   : 'text-gray-700 hover:bg-gray-50 border-transparent hover:border-gray-300'
               }`}
               title={isCollapsed ? tab.name : ''}
             >
-              <Icon className={`w-5 h-5 ${isActiveTop ? 'text-green-900' : ''}`} />
+              <Icon className={`w-5 h-5 ${isActiveTop ? 'text-primary-800' : ''}`} />
               {!isCollapsed && <span className="leading-tight">{tab.name}</span>}
             </button>
           );
